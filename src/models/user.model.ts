@@ -1,0 +1,64 @@
+import {
+  Table, Column, Model, DataType, PrimaryKey, AutoIncrement, DefaultScope, Scopes,
+} from 'sequelize-typescript';
+
+@DefaultScope(() => ({ attributes: { exclude: ['password_hash'] } }))
+@Scopes(() => ({ withPassword: { attributes: { exclude: [] as string[] } } }))
+@Table({ tableName: 'users', underscored: true })
+export class User extends Model {
+  @PrimaryKey
+  @AutoIncrement
+  @Column(DataType.INTEGER)
+  id: number;
+
+  @Column({ type: DataType.INTEGER, allowNull: false })
+  role_id: number;
+
+  @Column(DataType.INTEGER)
+  shop_id: number;
+
+  @Column({ type: DataType.STRING(50), allowNull: false })
+  first_name: string;
+
+  @Column({ type: DataType.STRING(50), allowNull: false })
+  last_name: string;
+
+  @Column({ type: DataType.STRING(255), allowNull: false, unique: true })
+  email: string;
+
+  @Column({ type: DataType.STRING(255), allowNull: false })
+  password_hash: string;
+
+  @Column(DataType.STRING(20))
+  phone: string;
+
+  @Column(DataType.DATEONLY)
+  date_of_birth: string;
+
+  @Column(DataType.ENUM('male', 'female', 'other'))
+  gender: string;
+
+  @Column(DataType.TEXT)
+  profile_pic: string;
+
+  @Column({ type: DataType.ENUM('active', 'inactive', 'suspended'), defaultValue: 'active' })
+  status: string;
+
+  @Column(DataType.DATEONLY)
+  hire_date: string;
+
+  @Column(DataType.DECIMAL(10, 2))
+  salary: number;
+
+  @Column(DataType.STRING(100))
+  emergency_contact: string;
+
+  @Column(DataType.STRING(150))
+  specialization: string;
+
+  @Column(DataType.TEXT)
+  bio: string;
+
+  @Column(DataType.TEXT)
+  govt_id_url: string;
+}

@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GymMan · Platform Admin</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --panel2: #1c2330; --border: #2a3240;
+    --text: #e6edf3; --muted: #8b949e; --primary: #6366f1; --primary-hi: #818cf8;
+    --green: #22c55e; --red: #ef4444; --amber: #f59e0b; --cyan: #06b6d4;
+    --radius: 12px; --shadow: 0 8px 30px rgba(0,0,0,.35);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
+  a { color: var(--primary-hi); text-decoration: none; }
+  button { font-family: inherit; cursor: pointer; border: none; }
+  input, select, textarea { font-family: inherit; font-size: 14px; }
+  .hidden { display: none !important; }
+
+  /* ---- Login ---- */
+  #login { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .login-card { width: 100%; max-width: 380px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 36px 30px; box-shadow: var(--shadow); }
+  .brand { display: flex; align-items: center; gap: 10px; justify-content: center; margin-bottom: 6px; }
+  .brand .logo { width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg,var(--primary),var(--cyan));
+    display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 20px; color: #fff; }
+  .brand h1 { font-size: 20px; }
+  .login-card p.sub { text-align: center; color: var(--muted); margin-bottom: 24px; font-size: 13px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .field input, .field select, .field textarea { width: 100%; padding: 11px 12px; background: var(--panel2);
+    border: 1px solid var(--border); border-radius: 8px; color: var(--text); outline: none; }
+  .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--primary); }
+  .btn { padding: 11px 16px; border-radius: 8px; font-weight: 600; font-size: 14px; background: var(--primary); color: #fff;
+    transition: filter .15s; }
+  .btn:hover { filter: brightness(1.1); }
+  .btn:disabled { opacity: .55; cursor: not-allowed; }
+  .btn.full { width: 100%; }
+  .btn.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .btn.danger { background: var(--red); }
+  .btn.green { background: var(--green); }
+  .btn.amber { background: var(--amber); color: #1a1a1a; }
+  .btn.sm { padding: 6px 10px; font-size: 12px; border-radius: 6px; }
+  .err { color: var(--red); font-size: 13px; margin-top: 10px; text-align: center; min-height: 18px; }
+
+  /* ---- Shell ---- */
+  #app { display: flex; min-height: 100vh; }
+  aside { width: 230px; background: var(--panel); border-right: 1px solid var(--border); padding: 20px 14px;
+    display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; }
+  aside .brand { justify-content: flex-start; margin-bottom: 28px; padding: 0 6px; }
+  nav a { display: flex; align-items: center; gap: 11px; padding: 11px 12px; border-radius: 8px; color: var(--muted);
+    font-weight: 500; margin-bottom: 4px; cursor: pointer; }
+  nav a:hover { background: var(--panel2); color: var(--text); }
+  nav a.active { background: var(--primary); color: #fff; }
+  nav a .ic { font-size: 16px; width: 20px; text-align: center; }
+  aside .spacer { flex: 1; }
+  .who { padding: 12px; background: var(--panel2); border-radius: 8px; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+  .who b { color: var(--text); display: block; font-size: 13px; }
+
+  main { flex: 1; padding: 28px 34px; max-width: 1400px; }
+  .page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; gap: 16px; flex-wrap: wrap; }
+  .page-head h2 { font-size: 22px; }
+  .page-head .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .toolbar input, .toolbar select { padding: 9px 12px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); outline: none; }
+
+  /* ---- KPI cards ---- */
+  .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; margin-bottom: 26px; }
+  .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 18px; }
+  .kpi .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+  .kpi .val { font-size: 28px; font-weight: 700; margin-top: 8px; }
+  .kpi .foot { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .kpi.accent { background: linear-gradient(135deg, rgba(99,102,241,.16), rgba(6,182,212,.08)); border-color: rgba(99,102,241,.35); }
+
+  /* ---- Cards / tables ---- */
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted);
+    padding: 13px 16px; border-bottom: 1px solid var(--border); font-weight: 600; }
+  td { padding: 13px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--panel2); }
+  .cell-main { font-weight: 600; }
+  .cell-sub { font-size: 12px; color: var(--muted); }
+  .row-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+
+  .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .badge.on { background: rgba(34,197,94,.15); color: #4ade80; }
+  .badge.off { background: rgba(239,68,68,.15); color: #f87171; }
+  .badge.warn { background: rgba(245,158,11,.15); color: #fbbf24; }
+  .badge.gray { background: rgba(139,148,158,.15); color: var(--muted); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+  .empty { padding: 40px; text-align: center; color: var(--muted); }
+  .loading { padding: 40px; text-align: center; color: var(--muted); }
+
+  /* ---- Modal ---- */
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center;
+    padding: 20px; z-index: 50; }
+  .modal { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); width: 100%;
+    max-width: 560px; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow); }
+  .modal.wide { max-width: 720px; }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid var(--border); }
+  .modal-head h3 { font-size: 17px; }
+  .modal-head .x { background: transparent; color: var(--muted); font-size: 22px; line-height: 1; padding: 4px 8px; border-radius: 6px; }
+  .modal-head .x:hover { background: var(--panel2); color: var(--text); }
+  .modal-body { padding: 22px; }
+  .modal-foot { padding: 16px 22px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+  .detail-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+  .stat-box { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .stat-box .l { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+  .stat-box .v { font-size: 18px; font-weight: 700; margin-top: 3px; }
+  .section-title { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted);
+    margin: 18px 0 10px; font-weight: 600; }
+  .kv { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .kv:last-child { border: none; }
+  .kv .k { color: var(--muted); }
+
+  /* ---- Toast ---- */
+  #toasts { position: fixed; bottom: 22px; right: 22px; display: flex; flex-direction: column; gap: 10px; z-index: 100; }
+  .toast { padding: 13px 18px; border-radius: 8px; box-shadow: var(--shadow); font-size: 13px; font-weight: 500;
+    min-width: 240px; animation: slidein .2s ease; }
+  .toast.ok { background: #14351f; border: 1px solid var(--green); color: #86efac; }
+  .toast.bad { background: #3a1717; border: 1px solid var(--red); color: #fca5a5; }
+  @keyframes slidein { from { transform: translateX(30px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+  @media (max-width: 820px) {
+    aside { position: fixed; z-index: 40; transform: translateX(-100%); transition: transform .2s; }
+    aside.open { transform: none; }
+    main { padding: 20px 16px; }
+    .detail-grid { grid-template-columns: 1fr; }
+    .grid2 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= LOGIN ================= -->
+<div id="login">
+  <div class="login-card">
+    <div class="brand"><div class="logo">G</div><h1>GymMan</h1></div>
+    <p class="sub">Platform Control Panel</p>
+    <form id="loginForm">
+      <div class="field">
+        <label>Email</label>
+        <input type="email" id="loginEmail" placeholder="super@platform.com" autocomplete="username" required />
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password" required />
+      </div>
+      <button class="btn full" type="submit" id="loginBtn">Sign in</button>
+      <div class="err" id="loginErr"></div>
+    </form>
+  </div>
+</div>
+
+<!-- ================= APP ================= -->
+<div id="app" class="hidden">
+  <aside id="sidebar">
+    <div class="brand"><div class="logo">G</div><h1>GymMan</h1></div>
+    <nav>
+      <a data-view="dashboard" class="active"><span class="ic">▦</span><span>Dashboard</span></a>
+      <a data-view="shops"><span class="ic">◫</span><span>Shops</span></a>
+      <a data-view="plans"><span class="ic">◆</span><span>Platform Plans</span></a>
+      <a data-view="revenue"><span class="ic">₹</span><span>Revenue</span></a>
+      <a data-view="settings"><span class="ic">⚙</span><span>Settings</span></a>
+    </nav>
+    <div class="spacer"></div>
+    <div class="who">Signed in as<b id="whoName">—</b><span id="whoEmail"></span></div>
+    <button class="btn ghost full" id="logoutBtn">Sign out</button>
+  </aside>
+
+  <main id="content"><!-- views injected here --></main>
+</div>
+
+<div id="modalRoot"></div>
+<div id="toasts"></div>
+
+<script>
+'use strict';
+const API = '/api/v1/superadmin';
+let TOKEN = localStorage.getItem('sa_token') || '';
+let USER = JSON.parse(localStorage.getItem('sa_user') || 'null');
+let PLANS_CACHE = [];
+
+// ---------- helpers ----------
+const $ = (s, r=document) => r.querySelector(s);
+const el = (tag, props={}, ...kids) => {
+  const n = document.createElement(tag);
+  Object.entries(props).forEach(([k,v]) => {
+    if (k === 'class') n.className = v;
+    else if (k === 'html') n.innerHTML = v;
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else if (v !== null && v !== undefined) n.setAttribute(k, v);
+  });
+  kids.flat().forEach(c => n.append(c?.nodeType ? c : document.createTextNode(c ?? '')));
+  return n;
+};
+const money = (n) => '₹' + Number(n||0).toLocaleString('en-IN');
+const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '—';
+
+function toast(msg, ok=true) {
+  const t = el('div', { class: 'toast ' + (ok?'ok':'bad') }, msg);
+  $('#toasts').append(t);
+  setTimeout(() => { t.style.opacity='0'; setTimeout(()=>t.remove(),200); }, 3200);
+}
+
+async function api(path, { method='GET', body } = {}) {
+  const res = await fetch(API + path, {
+    method,
+    headers: { 'Content-Type': 'application/json', ...(TOKEN ? { Authorization: 'Bearer '+TOKEN } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (res.status === 401) { doLogout(); throw new Error('Session expired'); }
+  if (!res.ok || json.success === false) throw new Error(json.message || 'Request failed');
+  return json.data;
+}
+
+// ---------- auth ----------
+$('#loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = $('#loginBtn'); const errBox = $('#loginErr');
+  errBox.textContent = ''; btn.disabled = true; btn.textContent = 'Signing in…';
+  try {
+    const res = await fetch('/api/v1/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: $('#loginEmail').value.trim(), password: $('#loginPass').value }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.message || 'Login failed');
+    if (json.data.user.role !== 'super_admin') throw new Error('This panel is for platform super-admins only');
+    TOKEN = json.data.token; USER = json.data.user;
+    localStorage.setItem('sa_token', TOKEN);
+    localStorage.setItem('sa_user', JSON.stringify(USER));
+    enterApp();
+  } catch (err) {
+    errBox.textContent = err.message;
+  } finally { btn.disabled = false; btn.textContent = 'Sign in'; }
+});
+
+function doLogout() {
+  TOKEN=''; USER=null;
+  localStorage.removeItem('sa_token'); localStorage.removeItem('sa_user');
+  $('#app').classList.add('hidden'); $('#login').classList.remove('hidden');
+}
+$('#logoutBtn').addEventListener('click', doLogout);
+
+function enterApp() {
+  $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
+  $('#whoName').textContent = (USER.firstName||'') + ' ' + (USER.lastName||'');
+  $('#whoEmail').textContent = USER.email || '';
+  navigate('dashboard');
+}
+
+// ---------- nav ----------
+document.querySelectorAll('nav a').forEach(a =>
+  a.addEventListener('click', () => navigate(a.dataset.view)));
+
+function navigate(view) {
+  document.querySelectorAll('nav a').forEach(a => a.classList.toggle('active', a.dataset.view === view));
+  const c = $('#content'); c.innerHTML = '';
+  ({ dashboard: viewDashboard, shops: viewShops, plans: viewPlans, revenue: viewRevenue, settings: viewSettings }[view] || viewDashboard)(c);
+}
+
+// ---------- Dashboard ----------
+async function viewDashboard(root) {
+  root.append(el('div', { class: 'page-head' },
+    el('div', {}, el('h2', {}, 'Dashboard'), el('div', { class: 'sub' }, 'Platform-wide overview'))));
+  const grid = el('div', { class: 'kpis' }); root.append(grid);
+  grid.append(el('div', { class: 'loading' }, 'Loading metrics…'));
+  try {
+    const s = await api('/stats');
+    grid.innerHTML = '';
+    const cards = [
+      ['Total Shops', s.totalShops, `+${s.newShops30d} in last 30 days`, 'accent'],
+      ['Active Shops', s.activeShops, 'with a live subscription', ''],
+      ['Inactive Shops', s.inactiveShops, 'blocked / lapsed', ''],
+      ['Total Revenue', money(s.totalRevenue), 'all-time platform sales', 'accent'],
+      ['Active Sub Value', money(s.activeRecurringRevenue), 'current live subscriptions', ''],
+      ['Gym Owners', s.totalOwners, 'admins', ''],
+      ['Trainers', s.totalTrainers, 'across all shops', ''],
+      ['Members', s.totalMembers, 'end users', ''],
+    ];
+    cards.forEach(([l,v,f,cls]) => grid.append(
+      el('div', { class: 'kpi ' + cls },
+        el('div', { class: 'label' }, l),
+        el('div', { class: 'val' }, String(v)),
+        el('div', { class: 'foot' }, f))));
+  } catch (e) { grid.innerHTML=''; grid.append(el('div',{class:'empty'}, e.message)); }
+}
+
+// ---------- Shops ----------
+let shopSearch = '', shopStatus = '';
+async function viewShops(root) {
+  const head = el('div', { class: 'page-head' },
+    el('div', {}, el('h2', {}, 'Shops'), el('div', { class: 'sub' }, 'Manage gym tenants & their access')),
+    el('div', { class: 'toolbar' },
+      el('input', { type: 'search', placeholder: 'Search name or email…', value: shopSearch,
+        oninput: (e) => { shopSearch = e.target.value; clearTimeout(window._st); window._st=setTimeout(()=>loadShops(),300); } }),
+      el('select', { onchange: (e) => { shopStatus = e.target.value; loadShops(); } },
+        el('option', { value: '' }, 'All statuses'),
+        el('option', { value: 'active', ...(shopStatus==='active'?{selected:''}:{}) }, 'Active'),
+        el('option', { value: 'inactive', ...(shopStatus==='inactive'?{selected:''}:{}) }, 'Inactive'))));
+  root.append(head);
+  const card = el('div', { class: 'card' }); root.append(card);
+  window._shopCard = card;
+  loadShops();
+}
+
+async function loadShops() {
+  const card = window._shopCard; if (!card) return;
+  card.innerHTML = '<div class="loading">Loading shops…</div>';
+  try {
+    const q = new URLSearchParams();
+    if (shopSearch) q.set('search', shopSearch);
+    if (shopStatus) q.set('status', shopStatus);
+    const shops = await api('/shops?' + q.toString());
+    if (!shops.length) { card.innerHTML = '<div class="empty">No shops found.</div>'; return; }
+    const table = el('table', {},
+      el('thead', {}, el('tr', {},
+        el('th', {}, 'Shop'), el('th', {}, 'Owner'), el('th', {}, 'Members'),
+        el('th', {}, 'Plan'), el('th', {}, 'Expires'), el('th', {}, 'Status'),
+        el('th', { style: 'text-align:right' }, 'Actions'))),
+      el('tbody', {}, ...shops.map(shopRow)));
+    card.innerHTML = ''; card.append(table);
+  } catch (e) { card.innerHTML = '<div class="empty">'+e.message+'</div>'; }
+}
+
+function shopRow(s) {
+  const sub = s.subscription;
+  const expiring = sub && sub.daysLeft <= 7;
+  return el('tr', {},
+    el('td', {},
+      el('div', { class: 'cell-main' }, s.name),
+      el('div', { class: 'cell-sub' }, s.email || '—')),
+    el('td', {}, s.owner
+      ? el('div', {}, el('div', { class: 'cell-main' }, s.owner.name),
+          el('div', { class: 'cell-sub' }, s.owner.email))
+      : el('span', { class: 'cell-sub' }, '—')),
+    el('td', {}, String(s.memberCount)),
+    el('td', {}, sub ? sub.planName : el('span', { class: 'cell-sub' }, '—')),
+    el('td', {}, sub
+      ? el('div', {}, el('div', {}, fmtDate(sub.endDate)),
+          el('div', { class: 'cell-sub' }, (sub.daysLeft>=0?sub.daysLeft:0)+' days left'))
+      : el('span', { class: 'cell-sub' }, '—')),
+    el('td', {}, s.isActive
+      ? el('span', { class: 'badge '+(expiring?'warn':'on') }, el('span',{class:'dot'}), expiring?'Expiring':'Active')
+      : el('span', { class: 'badge off' }, el('span',{class:'dot'}), 'Inactive')),
+    el('td', {},
+      el('div', { class: 'row-actions' },
+        el('button', { class: 'btn ghost sm', onclick: () => openShopDetail(s.id) }, 'View'),
+        el('button', { class: 'btn ghost sm', onclick: () => notifyRenewal(s) }, 'Notify'),
+        s.isActive
+          ? el('button', { class: 'btn danger sm', onclick: () => revokeShop(s) }, 'Revoke')
+          : el('button', { class: 'btn green sm', onclick: () => openGrant(s) }, 'Grant'),
+        el('button', { class: 'btn amber sm', onclick: () => openExtend(s) }, 'Extend'))));
+}
+
+async function notifyRenewal(shop) {
+  try {
+    await api(`/shops/${shop.id}/notify-renewal`, { method: 'POST' });
+    toast(`Renewal reminder sent to ${shop.owner ? shop.owner.name : 'the owner'}`);
+  } catch (e) { toast(e.message, false); }
+}
+
+// ---------- Modal helper ----------
+function modal({ title, body, foot, wide }) {
+  const root = $('#modalRoot');
+  const close = () => root.innerHTML = '';
+  const overlay = el('div', { class: 'overlay', onclick: (e) => { if (e.target === overlay) close(); } },
+    el('div', { class: 'modal' + (wide?' wide':'') },
+      el('div', { class: 'modal-head' }, el('h3', {}, title), el('button', { class: 'x', onclick: close }, '×')),
+      el('div', { class: 'modal-body' }, body),
+      foot ? el('div', { class: 'modal-foot' }, ...foot(close)) : ''));
+  root.innerHTML = ''; root.append(overlay);
+  return close;
+}
+
+// ---------- Grant ----------
+async function ensurePlans() {
+  if (!PLANS_CACHE.length) PLANS_CACHE = await api('/plans');
+  return PLANS_CACHE.filter(p => p.is_active);
+}
+
+async function openGrant(shop) {
+  const plans = await ensurePlans();
+  if (!plans.length) return toast('Create a platform plan first', false);
+  let planId = plans[0].id;
+  const daysInput = el('input', { type: 'number', placeholder: 'defaults to plan duration', min: '1' });
+  const sel = el('select', {}, ...plans.map(p =>
+    el('option', { value: p.id }, `${p.name} · ${p.duration_days}d · ${money(p.sell_price)}`)));
+  sel.addEventListener('change', () => planId = Number(sel.value));
+  const close = modal({
+    title: `Grant access — ${shop.name}`,
+    body: el('div', {},
+      el('p', { class: 'cell-sub', style: 'margin-bottom:16px' },
+        'Comp a platform subscription (no charge). This immediately unblocks the gym.'),
+      el('div', { class: 'field' }, el('label', {}, 'Plan'), sel),
+      el('div', { class: 'field' }, el('label', {}, 'Override duration (days, optional)'), daysInput)),
+    foot: (close) => [
+      el('button', { class: 'btn ghost', onclick: close }, 'Cancel'),
+      el('button', { class: 'btn green', onclick: async (ev) => {
+        ev.target.disabled = true;
+        try {
+          await api(`/shops/${shop.id}/grant`, { method: 'POST',
+            body: { planId, days: daysInput.value ? Number(daysInput.value) : undefined } });
+          toast('Access granted'); close(); loadShops();
+        } catch (e) { toast(e.message, false); ev.target.disabled = false; }
+      } }, 'Grant access')],
+  });
+}
+
+async function openExtend(shop) {
+  const daysInput = el('input', { type: 'number', value: '30', min: '1' });
+  modal({
+    title: `Extend subscription — ${shop.name}`,
+    body: el('div', {},
+      el('p', { class: 'cell-sub', style: 'margin-bottom:16px' },
+        shop.isActive ? 'Add days to the current active subscription.'
+                      : 'This shop has no active subscription. Use "Grant" instead.'),
+      el('div', { class: 'field' }, el('label', {}, 'Days to add'), daysInput)),
+    foot: (close) => [
+      el('button', { class: 'btn ghost', onclick: close }, 'Cancel'),
+      el('button', { class: 'btn amber', onclick: async (ev) => {
+        ev.target.disabled = true;
+        try {
+          await api(`/shops/${shop.id}/extend`, { method: 'POST', body: { days: Number(daysInput.value) } });
+          toast('Subscription extended'); close(); loadShops();
+        } catch (e) { toast(e.message, false); ev.target.disabled = false; }
+      } }, 'Extend')],
+  });
+}
+
+async function revokeShop(shop) {
+  modal({
+    title: `Revoke access — ${shop.name}`,
+    body: el('div', {},
+      el('p', {}, 'This cancels the active platform subscription and blocks the gym. '
+        + 'The owner will be locked to the renewal screen and all trainers/members will be blocked.'),
+      el('p', { class: 'cell-sub', style: 'margin-top:10px' }, 'This does not delete any data.')),
+    foot: (close) => [
+      el('button', { class: 'btn ghost', onclick: close }, 'Cancel'),
+      el('button', { class: 'btn danger', onclick: async (ev) => {
+        ev.target.disabled = true;
+        try {
+          await api(`/shops/${shop.id}/revoke`, { method: 'POST' });
+          toast('Access revoked'); close(); loadShops();
+        } catch (e) { toast(e.message, false); ev.target.disabled = false; }
+      } }, 'Revoke access')],
+  });
+}
+
+// ---------- Shop detail ----------
+async function openShopDetail(id) {
+  const close = modal({ title: 'Loading…', wide: true, body: el('div', { class: 'loading' }, 'Loading shop…') });
+  try {
+    const s = await api('/shops/' + id);
+    const ownerSuspended = s.owner && s.owner.status === 'suspended';
+    modal({
+      title: s.name, wide: true,
+      body: el('div', {},
+        el('div', { class: 'detail-grid' },
+          statBox('Members', s.counts.members),
+          statBox('Trainers', s.counts.trainers),
+          statBox('Products', s.counts.products),
+          statBox('Shop Revenue', money(s.shopRevenue)),
+          statBox('Shop Expenses', money(s.shopExpenses)),
+          statBox('Status', s.isActive ? 'Active' : 'Inactive')),
+        el('div', { class: 'section-title' }, 'Owner'),
+        s.owner ? el('div', {},
+          kv('Name', s.owner.name), kv('Email', s.owner.email),
+          kv('Phone', s.owner.phone || '—'),
+          kv('Account', s.owner.status), kv('Joined', fmtDate(s.owner.joinedAt))) : el('div',{class:'cell-sub'},'No owner'),
+        el('div', { class: 'section-title' }, 'Contact'),
+        kv('Email', s.email || '—'), kv('Phone', s.phone || '—'), kv('Address', s.address || '—'),
+        el('div', { class: 'section-title' }, 'Subscription history'),
+        s.subscriptions.length ? el('div', { class: 'card' },
+          el('table', {},
+            el('thead', {}, el('tr', {},
+              el('th',{},'Plan'), el('th',{},'Status'), el('th',{},'Start'), el('th',{},'End'), el('th',{},'Amount'))),
+            el('tbody', {}, ...s.subscriptions.map(sub => el('tr', {},
+              el('td', {}, sub.planName || '—'),
+              el('td', {}, el('span', { class: 'badge ' + statusBadge(sub.status) }, sub.status)),
+              el('td', {}, fmtDate(sub.startDate)),
+              el('td', {}, fmtDate(sub.endDate)),
+              el('td', {}, sub.razorpayPaymentId === 'MANUAL_GRANT' ? 'Comped' : money(sub.sellPrice)))))))
+          : el('div', { class: 'cell-sub' }, 'No subscriptions yet')),
+      foot: (close) => [
+        el('button', { class: 'btn ghost', onclick: close }, 'Close'),
+        el('button', { class: 'btn ghost', onclick: () => notifyRenewal({ id, owner: s.owner }) }, 'Notify to Renew'),
+        el('button', { class: ownerSuspended ? 'btn green' : 'btn danger',
+          onclick: async (ev) => {
+            ev.target.disabled = true;
+            try {
+              await api(`/shops/${id}/owner-status`, { method: 'PATCH',
+                body: { status: ownerSuspended ? 'active' : 'suspended' } });
+              toast(ownerSuspended ? 'Owner reactivated' : 'Owner suspended');
+              close(); loadShops();
+            } catch (e) { toast(e.message, false); ev.target.disabled = false; }
+          } }, ownerSuspended ? 'Reactivate owner' : 'Suspend owner login'),
+        s.isActive
+          ? el('button', { class: 'btn danger', onclick: () => revokeShop({ id, name: s.name, isActive: true }) }, 'Revoke')
+          : el('button', { class: 'btn green', onclick: () => openGrant({ id, name: s.name }) }, 'Grant'),
+      ],
+    });
+  } catch (e) { close(); toast(e.message, false); }
+}
+const statBox = (l,v) => el('div', { class: 'stat-box' }, el('div',{class:'l'},l), el('div',{class:'v'},String(v)));
+const kv = (k,v) => el('div', { class: 'kv' }, el('span',{class:'k'},k), el('span',{},String(v)));
+const statusBadge = (s) => s==='active'?'on':s==='pending'?'warn':'gray';
+
+// ---------- Plans ----------
+async function viewPlans(root) {
+  root.append(el('div', { class: 'page-head' },
+    el('div', {}, el('h2', {}, 'Platform Plans'), el('div', { class: 'sub' }, 'Subscription tiers you sell to gym owners')),
+    el('button', { class: 'btn', onclick: () => openPlanForm() }, '+ New plan')));
+  const card = el('div', { class: 'card' }); root.append(card);
+  window._planCard = card; loadPlans();
+}
+
+async function loadPlans() {
+  const card = window._planCard; if (!card) return;
+  card.innerHTML = '<div class="loading">Loading plans…</div>';
+  try {
+    PLANS_CACHE = await api('/plans');
+    if (!PLANS_CACHE.length) { card.innerHTML = '<div class="empty">No plans yet.</div>'; return; }
+    const table = el('table', {},
+      el('thead', {}, el('tr', {},
+        el('th',{},'Plan'), el('th',{},'Type'), el('th',{},'Duration'),
+        el('th',{},'Base'), el('th',{},'Discount'), el('th',{},'Sell'),
+        el('th',{},'Subs'), el('th',{},'Status'), el('th',{style:'text-align:right'},'Actions'))),
+      el('tbody', {}, ...PLANS_CACHE.map(planRow)));
+    card.innerHTML = ''; card.append(table);
+  } catch (e) { card.innerHTML = '<div class="empty">'+e.message+'</div>'; }
+}
+
+function planRow(p) {
+  return el('tr', {},
+    el('td', {}, el('div', { class: 'cell-main' }, p.name),
+      p.description ? el('div', { class: 'cell-sub' }, p.description) : ''),
+    el('td', {}, p.plan_type),
+    el('td', {}, p.duration_days + ' days'),
+    el('td', {}, money(p.base_price)),
+    el('td', {}, money(p.discount)),
+    el('td', { class: 'cell-main' }, money(p.sell_price)),
+    el('td', {}, String(p.subscriptionCount)),
+    el('td', {}, p.is_active
+      ? el('span', { class: 'badge on' }, 'Active')
+      : el('span', { class: 'badge gray' }, 'Hidden')),
+    el('td', {}, el('div', { class: 'row-actions' },
+      el('button', { class: 'btn ghost sm', onclick: () => openPlanForm(p) }, 'Edit'),
+      el('button', { class: 'btn danger sm', onclick: () => deletePlan(p) }, 'Delete'))));
+}
+
+function openPlanForm(plan) {
+  const f = {};
+  const inp = (key, val, attrs={}) => {
+    const i = el('input', { value: val ?? '', ...attrs });
+    f[key] = i; return i;
+  };
+  const typeSel = el('select', {}, ...['monthly','quarterly','yearly'].map(t =>
+    el('option', { value: t, ...(plan && plan.plan_type===t?{selected:''}:{}) }, t)));
+  f.planType = typeSel;
+  const activeSel = el('select', {},
+    el('option', { value: 'true', ...(!plan||plan.is_active?{selected:''}:{}) }, 'Active'),
+    el('option', { value: 'false', ...(plan&&!plan.is_active?{selected:''}:{}) }, 'Hidden'));
+  f.isActive = activeSel;
+  const desc = el('textarea', { rows: '2' }, plan?.description || '');
+  f.description = desc;
+
+  modal({
+    title: plan ? 'Edit plan' : 'New platform plan',
+    body: el('div', {},
+      el('div', { class: 'field' }, el('label', {}, 'Name'), inp('name', plan?.name, { placeholder: 'Pro' })),
+      el('div', { class: 'grid2' },
+        el('div', { class: 'field' }, el('label', {}, 'Type'), typeSel),
+        el('div', { class: 'field' }, el('label', {}, 'Duration (days)'), inp('durationDays', plan?.duration_days, { type: 'number', min: '1' }))),
+      el('div', { class: 'grid2' },
+        el('div', { class: 'field' }, el('label', {}, 'Base price (₹)'), inp('basePrice', plan?.base_price, { type: 'number' })),
+        el('div', { class: 'field' }, el('label', {}, 'Discount (₹)'), inp('discount', plan?.discount ?? 0, { type: 'number' }))),
+      el('div', { class: 'grid2' },
+        el('div', { class: 'field' }, el('label', {}, 'Sell price (₹)'), inp('sellPrice', plan?.sell_price, { type: 'number' })),
+        el('div', { class: 'field' }, el('label', {}, 'Visibility'), activeSel)),
+      el('div', { class: 'field' }, el('label', {}, 'Description'), desc)),
+    foot: (close) => [
+      el('button', { class: 'btn ghost', onclick: close }, 'Cancel'),
+      el('button', { class: 'btn', onclick: async (ev) => {
+        const payload = {
+          name: f.name.value.trim(),
+          planType: typeSel.value,
+          durationDays: Number(f.durationDays.value),
+          basePrice: Number(f.basePrice.value),
+          discount: Number(f.discount.value || 0),
+          sellPrice: Number(f.sellPrice.value),
+          description: desc.value.trim(),
+          isActive: activeSel.value === 'true',
+        };
+        if (!payload.name || !payload.durationDays || isNaN(payload.basePrice) || isNaN(payload.sellPrice))
+          return toast('Fill all required fields', false);
+        ev.target.disabled = true;
+        try {
+          if (plan) await api('/plans/' + plan.id, { method: 'PUT', body: payload });
+          else await api('/plans', { method: 'POST', body: payload });
+          toast('Plan saved'); close(); loadPlans();
+        } catch (e) { toast(e.message, false); ev.target.disabled = false; }
+      } }, 'Save plan')],
+  });
+}
+
+function deletePlan(p) {
+  modal({
+    title: 'Delete plan',
+    body: el('div', {}, el('p', {}, `Delete "${p.name}"? If it has active subscriptions it will be hidden instead of removed.`)),
+    foot: (close) => [
+      el('button', { class: 'btn ghost', onclick: close }, 'Cancel'),
+      el('button', { class: 'btn danger', onclick: async (ev) => {
+        ev.target.disabled = true;
+        try { await api('/plans/' + p.id, { method: 'DELETE' }); toast('Done'); close(); loadPlans(); }
+        catch (e) { toast(e.message, false); ev.target.disabled = false; }
+      } }, 'Delete')],
+  });
+}
+
+// ---------- Revenue ----------
+async function viewRevenue(root) {
+  root.append(el('div', { class: 'page-head' },
+    el('div', {}, el('h2', {}, 'Revenue'), el('div', { class: 'sub' }, 'Platform subscription payments (latest 200)'))));
+  const card = el('div', { class: 'card' }); root.append(card);
+  card.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    const subs = await api('/subscriptions');
+    if (!subs.length) { card.innerHTML = '<div class="empty">No subscriptions yet.</div>'; return; }
+    const table = el('table', {},
+      el('thead', {}, el('tr', {},
+        el('th',{},'Date'), el('th',{},'Shop'), el('th',{},'Plan'),
+        el('th',{},'Period'), el('th',{},'Status'), el('th',{},'Amount'), el('th',{},'Source'))),
+      el('tbody', {}, ...subs.map(s => el('tr', {},
+        el('td', {}, fmtDate(s.createdAt)),
+        el('td', { class: 'cell-main' }, s.shop ? s.shop.name : '—'),
+        el('td', {}, s.planName || '—'),
+        el('td', {}, el('div', {}, fmtDate(s.startDate)), el('div', { class: 'cell-sub' }, '→ ' + fmtDate(s.endDate))),
+        el('td', {}, el('span', { class: 'badge ' + statusBadge(s.status) }, s.status)),
+        el('td', { class: 'cell-main' }, s.paymentId === 'MANUAL_GRANT' ? 'Comped' : money(s.sellPrice)),
+        el('td', { class: 'cell-sub' }, s.paymentId === 'MANUAL_GRANT' ? 'Manual grant' : (s.paymentId ? 'Razorpay' : '—'))))));
+    card.innerHTML = ''; card.append(table);
+  } catch (e) { card.innerHTML = '<div class="empty">'+e.message+'</div>'; }
+}
+
+// ---------- Settings ----------
+function viewSettings(root) {
+  root.append(el('div', { class: 'page-head' },
+    el('div', {}, el('h2', {}, 'Settings'), el('div', { class: 'sub' }, 'Your super-admin account'))));
+  const cur = el('input', { type: 'password', placeholder: 'Current password' });
+  const nw = el('input', { type: 'password', placeholder: 'New password (min 6 chars)' });
+  const card = el('div', { class: 'card', style: 'padding:22px;max-width:440px' },
+    el('div', { class: 'section-title', style: 'margin-top:0' }, 'Change password'),
+    el('div', { class: 'field' }, el('label', {}, 'Current password'), cur),
+    el('div', { class: 'field' }, el('label', {}, 'New password'), nw),
+    el('button', { class: 'btn', onclick: async (ev) => {
+      ev.target.disabled = true;
+      try {
+        await api('/change-password', { method: 'PUT', body: { currentPassword: cur.value, newPassword: nw.value } });
+        toast('Password changed'); cur.value=''; nw.value='';
+      } catch (e) { toast(e.message, false); }
+      ev.target.disabled = false;
+    } }, 'Update password'));
+  root.append(card);
+}
+
+// ---------- boot ----------
+if (TOKEN && USER && USER.role === 'super_admin') enterApp();
+</script>
+</body>
+</html>
