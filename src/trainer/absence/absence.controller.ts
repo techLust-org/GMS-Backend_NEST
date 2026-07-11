@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Body, Param, HttpCode, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, Query, HttpCode, UseGuards } from '@nestjs/common';
 import { TrainerAbsenceService } from './absence.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -13,18 +13,22 @@ export class TrainerAbsenceController {
   constructor(private readonly absenceService: TrainerAbsenceService) {}
 
   @Get()
-  list(@ShopId() shopId: number, @CurrentUser('id') trainerId: number) {
-    return this.absenceService.list(shopId, trainerId);
+  list(
+    @ShopId() shopId: string,
+    @CurrentUser('id') trainerId: string,
+    @Query() query: any,
+  ) {
+    return this.absenceService.list(shopId, trainerId, query);
   }
 
   @Post()
   @HttpCode(201)
-  create(@ShopId() shopId: number, @CurrentUser('id') trainerId: number, @Body() body: any) {
+  create(@ShopId() shopId: string, @CurrentUser('id') trainerId: string, @Body() body: any) {
     return this.absenceService.create(shopId, trainerId, body);
   }
 
   @Delete(':id')
-  remove(@ShopId() shopId: number, @CurrentUser('id') trainerId: number, @Param('id') id: string) {
-    return this.absenceService.remove(shopId, trainerId, +id);
+  remove(@ShopId() shopId: string, @CurrentUser('id') trainerId: string, @Param('id') id: string) {
+    return this.absenceService.remove(shopId, trainerId, id);
   }
 }

@@ -22,7 +22,7 @@ export class PlatformService {
     });
   }
 
-  async getSubscription(shopId: number) {
+  async getSubscription(shopId: string) {
     const today = new Date().toISOString().split('T')[0];
     const sub: any = await this.shopSubscription.findOne({
       where: { shop_id: shopId, status: 'active', end_date: { [Op.gte]: today } },
@@ -52,7 +52,7 @@ export class PlatformService {
     };
   }
 
-  async activate(shopId: number, body: any) {
+  async activate(shopId: string, body: any) {
     const { planId, razorpayOrderId, razorpayPaymentId, razorpaySignature } = body;
 
     if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {

@@ -16,18 +16,23 @@ export class TrainerMembersService {
     private readonly notificationService: NotificationService,
   ) {}
 
-  async myMembers(shopId: number, trainerId: number) {
-    const assignments: any[] = await this.trainerMember.findAll({
+  async myMembers(shopId: string, trainerId: string, query: any = {}) {
+    const { page = 1, limit = 10 } = query;
+    const offset = (page - 1) * limit;
+    const { count, rows } = await this.trainerMember.findAndCountAll({
       where: { shop_id: shopId, trainer_id: trainerId, is_active: true },
       include: [{
         model: User, as: 'member',
         include: [{ model: Role, attributes: ['name'] }],
       }],
+      limit: parseInt(limit),
+      offset: parseInt(String(offset), 10),
     });
-    return assignments.map((a) => a.member);
+    const members = rows.map((a: any) => a.member);
+    return new ApiPayload(members, 'Members fetched', { total: count, page: +page, limit: +limit });
   }
 
-  async assign(shopId: number, trainerId: number, memberId: number) {
+  async assign(shopId: string, trainerId: string, memberId: string) {
     const member = await this.user.findOne({ where: { id: memberId, shop_id: shopId } });
     if (!member) throw new AppError('Member not found', 404);
 
@@ -56,7 +61,7 @@ export class TrainerMembersService {
     return new ApiPayload(assignment, 'Member assigned');
   }
 
-  async unassign(shopId: number, trainerId: number, memberId: number) {
+  async unassign(shopId: string, trainerId: string, memberId: string) {
     const assignment: any = await this.trainerMember.findOne({
       where: { shop_id: shopId, trainer_id: trainerId, member_id: memberId, is_active: true },
     });
@@ -77,7 +82,7 @@ export class TrainerMembersService {
     return new ApiPayload(null, 'Member unassigned');
   }
 
-  async memberAttendance(shopId: number, trainerId: number, memberId: number, query: any) {
+  async memberAttendance(shopId: string, trainerId: string, memberId: string, query: any) {
     const assignment = await this.trainerMember.findOne({
       where: { shop_id: shopId, trainer_id: trainerId, member_id: memberId, is_active: true },
     });
@@ -94,8 +99,8 @@ export class TrainerMembersService {
     return this.attendance.findAll({ where, order: [['attendance_date', 'DESC']] });
   }
 
-  async availableMembers(shopId: number, query: any) {
-    const { search } = query;
+  async availableMembers(shopId: string, query: any) {
+    const { search, page = 1, limit = 10 } = query;
     const memberRole: any = await this.role.findOne({ where: { name: 'member' } });
 
     const assignedMemberIds = (await this.trainerMember.findAll({
@@ -113,6 +118,12 @@ export class TrainerMembersService {
       ];
     }
 
-    return this.user.findAll({ where });
+    const offset = (page - 1) * limit;
+    const { count, rows } = await this.user.findAndCountAll({
+      where,
+      limit: parseInt(limit),
+      offset: parseInt(String(offset), 10),
+    });
+    return new ApiPayload(rows, 'Available members fetched', { total: count, page: +page, limit: +limit });
   }
 }

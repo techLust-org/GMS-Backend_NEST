@@ -14,14 +14,19 @@ export class TrainerAbsenceService {
     private readonly notificationService: NotificationService,
   ) {}
 
-  async list(shopId: number, trainerId: number) {
-    return this.trainerAbsence.findAll({
+  async list(shopId: string, trainerId: string, query: any = {}) {
+    const { page = 1, limit = 10 } = query;
+    const offset = (page - 1) * limit;
+    const { count, rows } = await this.trainerAbsence.findAndCountAll({
       where: { shop_id: shopId, trainer_id: trainerId },
       order: [['absence_date', 'ASC']],
+      limit: parseInt(limit),
+      offset: parseInt(String(offset), 10),
     });
+    return new ApiPayload(rows, 'Absences fetched', { total: count, page: +page, limit: +limit });
   }
 
-  async create(shopId: number, trainerId: number, body: any) {
+  async create(shopId: string, trainerId: string, body: any) {
     const { absence_date, reason } = body;
     if (!absence_date) throw new AppError('Date required', 400);
 
@@ -59,7 +64,7 @@ export class TrainerAbsenceService {
     return new ApiPayload(absence, 'Absence marked');
   }
 
-  async remove(shopId: number, trainerId: number, id: number) {
+  async remove(shopId: string, trainerId: string, id: string) {
     const absence: any = await this.trainerAbsence.findOne({
       where: { id, shop_id: shopId, trainer_id: trainerId },
     });

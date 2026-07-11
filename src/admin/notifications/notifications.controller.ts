@@ -18,28 +18,28 @@ export class AdminNotificationsController {
 
   @Post('broadcast')
   @HttpCode(200)
-  broadcast(@ShopId() shopId: number, @Body() body: any) {
+  broadcast(@ShopId() shopId: string, @Body() body: any) {
     return this.notificationsService.broadcast(shopId, body);
   }
 
   // The owner's own inbox — identical in shape to a member's.
   @Get()
-  list(@CurrentUser('id') userId: number, @Query() query: any) {
+  list(@CurrentUser('id') userId: string, @Query() query: any) {
     return this.inbox.list(userId, query);
   }
 
   @Get('unread-count')
-  unreadCount(@CurrentUser('id') userId: number) {
+  unreadCount(@CurrentUser('id') userId: string) {
     return this.inbox.unreadCount(userId);
   }
 
   @Put('read-all')
-  markAllRead(@CurrentUser('id') userId: number) {
+  markAllRead(@CurrentUser('id') userId: string) {
     return this.inbox.markAllRead(userId);
   }
 
   @Put(':id/read')
-  markRead(@CurrentUser('id') userId: number, @Param('id') id: string) {
-    return this.inbox.markRead(userId, +id);
+  markRead(@CurrentUser('id') userId: string, @Param('id') id: string) {
+    return this.inbox.markRead(userId, id);
   }
 }

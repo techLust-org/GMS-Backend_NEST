@@ -10,7 +10,7 @@ import { ApiPayload } from '../common/api-payload';
 export class NotificationsInboxService {
   constructor(@InjectModel(Notification) private readonly notification: typeof Notification) {}
 
-  async list(userId: number, query: any) {
+  async list(userId: string, query: any) {
     const { page = 1, limit = 20 } = query;
     const offset = (page - 1) * limit;
     const { count, rows } = await this.notification.findAndCountAll({
@@ -22,21 +22,21 @@ export class NotificationsInboxService {
     return new ApiPayload(rows, 'Notifications', { total: count, page: +page, limit: +limit });
   }
 
-  async unreadCount(userId: number) {
+  async unreadCount(userId: string) {
     const count = await this.notification.count({
       where: { user_id: userId, is_read: false },
     });
     return { count };
   }
 
-  async markRead(userId: number, id: number) {
+  async markRead(userId: string, id: string) {
     const n: any = await this.notification.findOne({ where: { id, user_id: userId } });
     if (!n) throw new AppError('Notification not found', 404);
     await n.update({ is_read: true });
     return new ApiPayload(null, 'Marked as read');
   }
 
-  async markAllRead(userId: number) {
+  async markAllRead(userId: string) {
     await this.notification.update({ is_read: true }, { where: { user_id: userId, is_read: false } });
     return new ApiPayload(null, 'All marked as read');
   }

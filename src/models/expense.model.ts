@@ -1,17 +1,17 @@
-import { Table, Column, Model, DataType, PrimaryKey, AutoIncrement } from 'sequelize-typescript';
+import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
 
 @Table({ tableName: 'expenses', underscored: true })
 export class Expense extends Model {
   @PrimaryKey
-  @AutoIncrement
-  @Column(DataType.INTEGER)
-  id: number;
+  @Default(DataType.UUIDV4)
+  @Column(DataType.UUID)
+  id: string;
 
-  @Column({ type: DataType.INTEGER, allowNull: false })
-  shop_id: number;
+  @Column({ type: DataType.UUID, allowNull: false })
+  shop_id: string;
 
-  @Column({ type: DataType.INTEGER, allowNull: false })
-  category_id: number;
+  @Column({ type: DataType.UUID, allowNull: false })
+  category_id: string;
 
   @Column({ type: DataType.STRING(255), allowNull: false })
   description: string;
@@ -25,12 +25,12 @@ export class Expense extends Model {
   @Column(DataType.STRING(150))
   paid_to: string;
 
-  @Column(DataType.INTEGER)
-  trainer_id: number;
+  @Column(DataType.UUID)
+  trainer_id: string;
 
   @Column(DataType.TEXT)
   invoice_url: string;
 
-  @Column(DataType.INTEGER)
-  product_sale_id: number;
+  @Column(DataType.UUID)
+  product_sale_id: string;
 }

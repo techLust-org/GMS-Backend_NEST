@@ -3,19 +3,19 @@
 module.exports = {
   async up(queryInterface, Sequelize) {
     await queryInterface.createTable('payments', {
-      id: { type: Sequelize.INTEGER, primaryKey: true, autoIncrement: true },
+      id: { type: Sequelize.UUID, primaryKey: true, defaultValue: Sequelize.UUIDV4 },
       member_id: {
-        type: Sequelize.INTEGER,
+        type: Sequelize.UUID,
         allowNull: false,
         references: { model: 'users', key: 'id' },
       },
       subscription_id: {
-        type: Sequelize.INTEGER,
+        type: Sequelize.UUID,
         references: { model: 'subscriptions', key: 'id' },
         onDelete: 'SET NULL',
       },
       product_sale_id: {
-        type: Sequelize.INTEGER,
+        type: Sequelize.UUID,
         references: { model: 'product_sales', key: 'id' },
         onDelete: 'SET NULL',
       },

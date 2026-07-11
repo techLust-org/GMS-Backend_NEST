@@ -16,7 +16,7 @@ export class AdminFinancialService {
     private readonly ledger: LedgerService,
   ) {}
 
-  async summary(shopId: number, query: any) {
+  async summary(shopId: string, query: any) {
     const now = new Date();
     const year = parseInt(query.year) || now.getFullYear();
     const month = parseInt(query.month) || now.getMonth() + 1;
@@ -24,20 +24,20 @@ export class AdminFinancialService {
     return { year, month, ...data };
   }
 
-  async monthlyReport(shopId: number, query: any) {
+  async monthlyReport(shopId: string, query: any) {
     const year = parseInt(query.year) || new Date().getFullYear();
     const data = await this.financial.getAnnualSummary(year, shopId);
     return { year, months: data };
   }
 
-  async revenue(shopId: number, query: any) {
+  async revenue(shopId: string, query: any) {
     const year = parseInt(query.year) || new Date().getFullYear();
     const { revenue } = await this.financial.getMonthlySummary(year, shopId);
     return revenue;
   }
 
-  async getExpenses(shopId: number, query: any) {
-    const { year, month, categoryId } = query;
+  async getExpenses(shopId: string, query: any) {
+    const { year, month, categoryId, page = 1, limit = 10 } = query;
     const where: any = { shop_id: shopId };
     if (categoryId) where.category_id = categoryId;
     if (year && month) {
@@ -47,17 +47,21 @@ export class AdminFinancialService {
     } else if (year) {
       where.expense_date = { [Op.between]: [`${year}-01-01`, `${year}-12-31`] };
     }
-    return this.expense.findAll({
+    const offset = (page - 1) * limit;
+    const { count, rows } = await this.expense.findAndCountAll({
       where,
       include: [
         { model: ExpenseCategory, as: 'category', attributes: ['id', 'name', 'type'] },
         { model: User, as: 'trainer', attributes: ['id', 'first_name', 'last_name'] },
       ],
       order: [['expense_date', 'DESC'], ['created_at', 'DESC']],
+      limit: parseInt(limit),
+      offset: parseInt(String(offset), 10),
     });
+    return new ApiPayload(rows, 'Expenses fetched', { total: count, page: +page, limit: +limit });
   }
 
-  async createExpense(shopId: number, body: any) {
+  async createExpense(shopId: string, body: any) {
     const { categoryId, description, amount, expenseDate, paidTo, trainerId, invoiceUrl } = body;
     if (!categoryId || !description || !amount) throw new AppError('Category, description and amount required', 400);
 
@@ -87,7 +91,7 @@ export class AdminFinancialService {
     return new ApiPayload(expense, 'Transaction recorded');
   }
 
-  async updateExpense(shopId: number, id: number, body: any) {
+  async updateExpense(shopId: string, id: string, body: any) {
     const expense: any = await this.expense.findOne({ where: { id, shop_id: shopId } });
     if (!expense) throw new AppError('Expense not found', 404);
     const { categoryId, description, amount, expenseDate, paidTo, invoiceUrl } = body;
@@ -128,7 +132,7 @@ export class AdminFinancialService {
     return new ApiPayload(expense, 'Transaction updated');
   }
 
-  async deleteExpense(shopId: number, id: number) {
+  async deleteExpense(shopId: string, id: string) {
     const expense: any = await this.expense.findOne({ where: { id, shop_id: shopId } });
     if (!expense) throw new AppError('Expense not found', 404);
     await this.ledger.removeByReference({ shopId, reference: 'expense', referenceId: expense.id });

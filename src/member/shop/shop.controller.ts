@@ -13,24 +13,24 @@ export class MemberShopController {
   constructor(private readonly shopService: MemberShopService) {}
 
   @Get()
-  listProducts(@ShopId() shopId: number, @Query() query: any) {
+  listProducts(@ShopId() shopId: string, @Query() query: any) {
     return this.shopService.listProducts(shopId, query);
   }
 
   @Post('create-order')
   @HttpCode(200)
-  createOrder(@ShopId() shopId: number, @Body() body: any) {
+  createOrder(@ShopId() shopId: string, @Body() body: any) {
     return this.shopService.createOrder(shopId, body);
   }
 
   @Post('purchase')
   @HttpCode(201)
-  purchase(@ShopId() shopId: number, @CurrentUser('id') userId: number, @Body() body: any) {
+  purchase(@ShopId() shopId: string, @CurrentUser('id') userId: string, @Body() body: any) {
     return this.shopService.purchase(shopId, userId, body);
   }
 
   @Get('orders')
-  myOrders(@ShopId() shopId: number, @CurrentUser('id') userId: number) {
+  myOrders(@ShopId() shopId: string, @CurrentUser('id') userId: string) {
     return this.shopService.myOrders(shopId, userId);
   }
 }

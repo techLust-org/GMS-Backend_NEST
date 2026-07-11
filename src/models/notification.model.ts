@@ -1,17 +1,17 @@
-import { Table, Column, Model, DataType, PrimaryKey, AutoIncrement } from 'sequelize-typescript';
+import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
 
 @Table({ tableName: 'notifications', underscored: true })
 export class Notification extends Model {
   @PrimaryKey
-  @AutoIncrement
-  @Column(DataType.INTEGER)
-  id: number;
+  @Default(DataType.UUIDV4)
+  @Column(DataType.UUID)
+  id: string;
 
-  @Column(DataType.INTEGER)
-  shop_id: number;
+  @Column(DataType.UUID)
+  shop_id: string;
 
-  @Column({ type: DataType.INTEGER, allowNull: false })
-  user_id: number;
+  @Column({ type: DataType.UUID, allowNull: false })
+  user_id: string;
 
   @Column({
     type: DataType.ENUM(
@@ -32,6 +32,6 @@ export class Notification extends Model {
   @Column({ type: DataType.BOOLEAN, defaultValue: false })
   is_read: boolean;
 
-  @Column(DataType.INTEGER)
-  related_id: number;
+  @Column(DataType.UUID)
+  related_id: string;
 }

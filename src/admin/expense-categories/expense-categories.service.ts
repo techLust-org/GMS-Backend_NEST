@@ -8,14 +8,14 @@ import { ApiPayload } from '../../common/api-payload';
 export class ExpenseCategoriesService {
   constructor(@InjectModel(ExpenseCategory) private readonly expenseCategory: typeof ExpenseCategory) {}
 
-  async list(shopId: number) {
+  async list(shopId: string) {
     return this.expenseCategory.findAll({
       where: { shop_id: shopId },
       order: [['name', 'ASC']],
     });
   }
 
-  async create(shopId: number, body: any) {
+  async create(shopId: string, body: any) {
     const { name, type = 'debit' } = body;
     if (!name) throw new AppError('Name required', 400);
     if (!['credit', 'debit'].includes(type)) throw new AppError('Type must be credit or debit', 400);
@@ -23,7 +23,7 @@ export class ExpenseCategoriesService {
     return new ApiPayload(category, 'Category created');
   }
 
-  async update(shopId: number, id: number, body: any) {
+  async update(shopId: string, id: string, body: any) {
     const category: any = await this.expenseCategory.findOne({ where: { id, shop_id: shopId } });
     if (!category) throw new AppError('Category not found', 404);
     const { name, type } = body;
@@ -32,7 +32,7 @@ export class ExpenseCategoriesService {
     return new ApiPayload(category, 'Category updated');
   }
 
-  async remove(shopId: number, id: number) {
+  async remove(shopId: string, id: string) {
     const category: any = await this.expenseCategory.findOne({ where: { id, shop_id: shopId } });
     if (!category) throw new AppError('Category not found', 404);
     await category.destroy();

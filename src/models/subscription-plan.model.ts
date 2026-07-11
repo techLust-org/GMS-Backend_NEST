@@ -1,15 +1,15 @@
-import { Table, Column, Model, DataType, PrimaryKey, AutoIncrement } from 'sequelize-typescript';
+import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
 
 // Member-facing plans, defined per shop by the owner.
 @Table({ tableName: 'subscription_plans', underscored: true })
 export class SubscriptionPlan extends Model {
   @PrimaryKey
-  @AutoIncrement
-  @Column(DataType.INTEGER)
-  id: number;
+  @Default(DataType.UUIDV4)
+  @Column(DataType.UUID)
+  id: string;
 
-  @Column({ type: DataType.INTEGER, allowNull: false })
-  shop_id: number;
+  @Column({ type: DataType.UUID, allowNull: false })
+  shop_id: string;
 
   @Column({ type: DataType.STRING(100), allowNull: false })
   name: string;

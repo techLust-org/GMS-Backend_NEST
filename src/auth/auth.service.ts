@@ -5,6 +5,7 @@ import { User, Role, Shop } from '../models';
 import { AuthCryptoService } from '../common/auth-crypto.service';
 import { AppError } from '../common/app-error';
 import { ApiPayload } from '../common/api-payload';
+import { S3Service } from '../shared/s3.service';
 
 @Injectable()
 export class AuthService {
@@ -14,7 +15,21 @@ export class AuthService {
     @InjectModel(Shop) private readonly shop: typeof Shop,
     @InjectConnection() private readonly sequelize: Sequelize,
     private readonly auth: AuthCryptoService,
+    private readonly s3: S3Service,
   ) {}
+
+  // Shared by login/me so every role (admin/trainer/member) sees their
+  // shop's branding — logo + theme color — in the client, not just the owner.
+  private async resolveShopBranding(
+    shopId: string | null | undefined,
+  ): Promise<{ logoUrl: string | null; themeColor: string | null }> {
+    if (!shopId) return { logoUrl: null, themeColor: null };
+    const shop: any = await this.shop.findByPk(shopId, { attributes: ['logo_url', 'theme_color'] });
+    return {
+      logoUrl: shop?.logo_url ? await this.s3.getViewUrl(shop.logo_url) : null,
+      themeColor: shop?.theme_color ?? null,
+    };
+  }
 
   async login(body: any) {
     const { email, password } = body;
@@ -38,6 +53,8 @@ export class AuthService {
       shop_id: user.shop_id,
     });
 
+    const branding = await this.resolveShopBranding(user.shop_id);
+
     return {
       token,
       user: {
@@ -47,7 +64,9 @@ export class AuthService {
         email: user.email,
         role: user.Role.name,
         shopId: user.shop_id,
-        profilePic: user.profile_pic,
+        profilePic: user.profile_pic ? await this.s3.getViewUrl(user.profile_pic) : null,
+        shopLogoUrl: branding.logoUrl,
+        shopThemeColor: branding.themeColor,
       },
     };
   }
@@ -124,11 +143,12 @@ export class AuthService {
     }
   }
 
-  async me(userId: number) {
+  async me(userId: string) {
     const user: any = await this.user.findByPk(userId, {
       include: [{ model: Role, attributes: ['name'] }],
     });
     if (!user) throw new AppError('User not found', 404);
+    const branding = await this.resolveShopBranding(user.shop_id);
     return {
       id: user.id,
       firstName: user.first_name,
@@ -138,14 +158,60 @@ export class AuthService {
       shopId: user.shop_id,
       phone: user.phone,
       gender: user.gender,
-      profilePic: user.profile_pic,
+      profilePic: user.profile_pic ? await this.s3.getViewUrl(user.profile_pic) : null,
+      shopLogoUrl: branding.logoUrl,
+      shopThemeColor: branding.themeColor,
       status: user.status,
       specialization: user.specialization,
       bio: user.bio,
     };
   }
 
-  async changePassword(userId: number, body: any) {
+  // Step 1: client asks for a short-lived signed URL to PUT the image directly to S3.
+  async presignProfilePicture(userId: string, shopId: string | null, role: string, body: any) {
+    const { contentType } = body;
+    if (!contentType) throw new AppError('contentType required', 400);
+
+    const key = this.s3.buildProfilePictureKey(shopId, role, contentType);
+    const uploadUrl = await this.s3.getUploadUrl(key, contentType);
+    return new ApiPayload({ uploadUrl, key }, 'Upload URL generated');
+  }
+
+  // Step 2: after the client PUTs the file to S3, it confirms the key so we persist it.
+  async updateProfilePicture(userId: string, shopId: string | null, role: string, body: any) {
+    const { key } = body;
+    if (!key) throw new AppError('key required', 400);
+    const segment = role === 'admin' ? 'shop' : 'users';
+    const expectedPrefix = `${shopId ?? 'platform'}/${segment}/profiles/avatar_`;
+    if (!key.startsWith(expectedPrefix)) throw new AppError('Invalid object key', 400);
+
+    const user: any = await this.user.findByPk(userId);
+    if (!user) throw new AppError('User not found', 404);
+
+    const oldKey = user.profile_pic;
+    await user.update({ profile_pic: key });
+    if (oldKey && oldKey !== key) {
+      this.s3.deleteObject(oldKey).catch(() => {});
+    }
+
+    const profilePic = await this.s3.getViewUrl(key);
+    return new ApiPayload({ profilePic }, 'Profile picture updated');
+  }
+
+  async removeProfilePicture(userId: string) {
+    const user: any = await this.user.findByPk(userId);
+    if (!user) throw new AppError('User not found', 404);
+
+    const oldKey = user.profile_pic;
+    if (!oldKey) return new ApiPayload(null, 'No profile picture to remove');
+
+    await user.update({ profile_pic: null });
+    this.s3.deleteObject(oldKey).catch(() => {});
+
+    return new ApiPayload(null, 'Profile picture removed');
+  }
+
+  async changePassword(userId: string, body: any) {
     const { currentPassword, newPassword } = body;
     const user: any = await this.user.scope('withPassword').findByPk(userId);
     const valid = await this.auth.compare(currentPassword, user.password_hash);

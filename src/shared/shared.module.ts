@@ -7,17 +7,19 @@ import { LedgerService } from './ledger.service';
 import { FinancialService } from './financial.service';
 import { CronService } from './cron.service';
 import { NotificationsInboxService } from './notifications-inbox.service';
+import { S3Service } from './s3.service';
+import { MailService } from './mail.service';
 
 @Global()
 @Module({
   imports: [SequelizeModule.forFeature([Notification, Ledger, Attendance, Subscription])],
   providers: [
     RazorpayService, NotificationService, LedgerService, FinancialService, CronService,
-    NotificationsInboxService,
+    NotificationsInboxService, S3Service, MailService,
   ],
   exports: [
     RazorpayService, NotificationService, LedgerService, FinancialService,
-    NotificationsInboxService,
+    NotificationsInboxService, S3Service, MailService,
   ],
 })
 export class SharedModule {}

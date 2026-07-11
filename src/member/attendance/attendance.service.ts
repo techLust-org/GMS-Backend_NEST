@@ -12,7 +12,7 @@ export class MemberAttendanceService {
     @InjectModel(Subscription) private readonly subscription: typeof Subscription,
   ) {}
 
-  async history(shopId: number, userId: number, query: any) {
+  async history(shopId: string, userId: string, query: any) {
     const { from, to } = query;
     const where: any = { shop_id: shopId, member_id: userId };
     if (from || to) {
@@ -23,14 +23,14 @@ export class MemberAttendanceService {
     return this.attendance.findAll({ where, order: [['attendance_date', 'DESC']] });
   }
 
-  async today(shopId: number, userId: number) {
+  async today(shopId: string, userId: string) {
     const today = new Date().toISOString().split('T')[0];
     return this.attendance.findOne({
       where: { shop_id: shopId, member_id: userId, attendance_date: today },
     });
   }
 
-  async checkIn(shopId: number, userId: number) {
+  async checkIn(shopId: string, userId: string) {
     const activeSub = await this.subscription.findOne({
       where: { shop_id: shopId, member_id: userId, status: 'active' },
     });
@@ -51,7 +51,7 @@ export class MemberAttendanceService {
     return new ApiPayload(record, 'Checked in successfully');
   }
 
-  async checkOut(shopId: number, userId: number) {
+  async checkOut(shopId: string, userId: string) {
     const today = new Date().toISOString().split('T')[0];
     const record: any = await this.attendance.findOne({
       where: { shop_id: shopId, member_id: userId, attendance_date: today },

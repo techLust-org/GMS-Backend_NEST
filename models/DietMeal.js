@@ -2,8 +2,8 @@
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => sequelize.define('DietMeal', {
-  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  diet_plan_id: { type: DataTypes.INTEGER, allowNull: false },
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  diet_plan_id: { type: DataTypes.UUID, allowNull: false },
   meal_name: { type: DataTypes.STRING(100), allowNull: false },
   meal_time: { type: DataTypes.STRING(10) },
   foods: { type: DataTypes.TEXT, allowNull: false },

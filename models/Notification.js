@@ -2,9 +2,9 @@
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => sequelize.define('Notification', {
-  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  shop_id: { type: DataTypes.INTEGER },
-  user_id: { type: DataTypes.INTEGER, allowNull: false },
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  shop_id: { type: DataTypes.UUID },
+  user_id: { type: DataTypes.UUID, allowNull: false },
   type: {
     type: DataTypes.ENUM(
       'subscription_expiry', 'trainer_assigned', 'trainer_unassigned',
@@ -16,5 +16,5 @@ module.exports = (sequelize) => sequelize.define('Notification', {
   title: { type: DataTypes.STRING(200), allowNull: false },
   message: { type: DataTypes.TEXT, allowNull: false },
   is_read: { type: DataTypes.BOOLEAN, defaultValue: false },
-  related_id: { type: DataTypes.INTEGER },
+  related_id: { type: DataTypes.UUID },
 }, { tableName: 'notifications', underscored: true });

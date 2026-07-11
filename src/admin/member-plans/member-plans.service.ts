@@ -10,14 +10,14 @@ const DURATION_DAYS: Record<string, number> = { monthly: 30, quarterly: 90, year
 export class MemberPlansService {
   constructor(@InjectModel(SubscriptionPlan) private readonly subscriptionPlan: typeof SubscriptionPlan) {}
 
-  async list(shopId: number) {
+  async list(shopId: string) {
     return this.subscriptionPlan.findAll({
       where: { shop_id: shopId },
       order: [['sell_price', 'ASC']],
     });
   }
 
-  async create(shopId: number, body: any) {
+  async create(shopId: string, body: any) {
     const { name, duration, durationDays, basePrice, discount = 0, sellPrice, description } = body;
     if (!name || !duration || sellPrice === undefined) {
       throw new AppError('Name, duration and sell price are required', 400);
@@ -37,7 +37,7 @@ export class MemberPlansService {
     return new ApiPayload(plan, 'Plan created');
   }
 
-  async update(shopId: number, id: number, body: any) {
+  async update(shopId: string, id: string, body: any) {
     const plan: any = await this.subscriptionPlan.findOne({ where: { id, shop_id: shopId } });
     if (!plan) throw new AppError('Plan not found', 404);
     const { name, duration, durationDays, basePrice, discount, sellPrice, description, isActive } = body;
@@ -55,7 +55,7 @@ export class MemberPlansService {
     return new ApiPayload(plan, 'Plan updated');
   }
 
-  async remove(shopId: number, id: number) {
+  async remove(shopId: string, id: string) {
     const plan: any = await this.subscriptionPlan.findOne({ where: { id, shop_id: shopId } });
     if (!plan) throw new AppError('Plan not found', 404);
     await plan.update({ is_active: false });

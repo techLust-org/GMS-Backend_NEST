@@ -1,5 +1,5 @@
 import {
-  Table, Column, Model, DataType, PrimaryKey, AutoIncrement, DefaultScope, Scopes,
+  Table, Column, Model, DataType, PrimaryKey, Default, DefaultScope, Scopes,
 } from 'sequelize-typescript';
 
 @DefaultScope(() => ({ attributes: { exclude: ['password_hash'] } }))
@@ -7,15 +7,15 @@ import {
 @Table({ tableName: 'users', underscored: true })
 export class User extends Model {
   @PrimaryKey
-  @AutoIncrement
-  @Column(DataType.INTEGER)
-  id: number;
+  @Default(DataType.UUIDV4)
+  @Column(DataType.UUID)
+  id: string;
 
-  @Column({ type: DataType.INTEGER, allowNull: false })
-  role_id: number;
+  @Column({ type: DataType.UUID, allowNull: false })
+  role_id: string;
 
-  @Column(DataType.INTEGER)
-  shop_id: number;
+  @Column(DataType.UUID)
+  shop_id: string;
 
   @Column({ type: DataType.STRING(50), allowNull: false })
   first_name: string;

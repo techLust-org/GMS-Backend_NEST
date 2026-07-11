@@ -12,7 +12,7 @@ const SHOP_SCOPED = [
 module.exports = {
   async up(queryInterface, Sequelize) {
     const shopFk = (allowNull) => ({
-      type: Sequelize.INTEGER,
+      type: Sequelize.UUID,
       allowNull,
       references: { model: 'shops', key: 'id' },
       onDelete: 'CASCADE',
@@ -24,7 +24,7 @@ module.exports = {
     }
     // Notifications may be shop-wide announcements; nullable + no cascade index needed.
     await queryInterface.addColumn('notifications', 'shop_id', {
-      type: Sequelize.INTEGER,
+      type: Sequelize.UUID,
       references: { model: 'shops', key: 'id' },
       onDelete: 'SET NULL',
     });
@@ -58,7 +58,7 @@ module.exports = {
     await queryInterface.removeColumn('expenses', 'category');
     await queryInterface.removeColumn('expenses', 'receipt_url');
     await queryInterface.addColumn('expenses', 'category_id', {
-      type: Sequelize.INTEGER,
+      type: Sequelize.UUID,
       allowNull: false,
       references: { model: 'expense_categories', key: 'id' },
       onDelete: 'RESTRICT',

@@ -13,23 +13,23 @@ export class ExpenseCategoriesController {
   constructor(private readonly expenseCategoriesService: ExpenseCategoriesService) {}
 
   @Get()
-  list(@ShopId() shopId: number) {
+  list(@ShopId() shopId: string) {
     return this.expenseCategoriesService.list(shopId);
   }
 
   @Post()
   @HttpCode(201)
-  create(@ShopId() shopId: number, @Body() body: any) {
+  create(@ShopId() shopId: string, @Body() body: any) {
     return this.expenseCategoriesService.create(shopId, body);
   }
 
   @Put(':id')
-  update(@ShopId() shopId: number, @Param('id') id: string, @Body() body: any) {
-    return this.expenseCategoriesService.update(shopId, +id, body);
+  update(@ShopId() shopId: string, @Param('id') id: string, @Body() body: any) {
+    return this.expenseCategoriesService.update(shopId, id, body);
   }
 
   @Delete(':id')
-  remove(@ShopId() shopId: number, @Param('id') id: string) {
-    return this.expenseCategoriesService.remove(shopId, +id);
+  remove(@ShopId() shopId: string, @Param('id') id: string) {
+    return this.expenseCategoriesService.remove(shopId, id);
   }
 }

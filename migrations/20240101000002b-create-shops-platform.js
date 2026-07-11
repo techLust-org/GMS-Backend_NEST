@@ -10,10 +10,10 @@ module.exports = {
     };
 
     await queryInterface.createTable('shops', {
-      id: { type: Sequelize.INTEGER, primaryKey: true, autoIncrement: true },
+      id: { type: Sequelize.UUID, primaryKey: true, defaultValue: Sequelize.UUIDV4 },
       name: { type: Sequelize.STRING(150), allowNull: false },
       owner_id: {
-        type: Sequelize.INTEGER,
+        type: Sequelize.UUID,
         allowNull: false,
         references: { model: 'users', key: 'id' },
         onUpdate: 'CASCADE',
@@ -28,7 +28,7 @@ module.exports = {
     });
 
     await queryInterface.createTable('shop_subscription_plans', {
-      id: { type: Sequelize.INTEGER, primaryKey: true, autoIncrement: true },
+      id: { type: Sequelize.UUID, primaryKey: true, defaultValue: Sequelize.UUIDV4 },
       name: { type: Sequelize.STRING(100), allowNull: false },
       plan_type: { type: Sequelize.ENUM('monthly', 'quarterly', 'yearly'), allowNull: false },
       duration_days: { type: Sequelize.INTEGER, allowNull: false },
@@ -41,15 +41,15 @@ module.exports = {
     });
 
     await queryInterface.createTable('shop_subscriptions', {
-      id: { type: Sequelize.INTEGER, primaryKey: true, autoIncrement: true },
+      id: { type: Sequelize.UUID, primaryKey: true, defaultValue: Sequelize.UUIDV4 },
       shop_id: {
-        type: Sequelize.INTEGER,
+        type: Sequelize.UUID,
         allowNull: false,
         references: { model: 'shops', key: 'id' },
         onDelete: 'CASCADE',
       },
       plan_id: {
-        type: Sequelize.INTEGER,
+        type: Sequelize.UUID,
         allowNull: false,
         references: { model: 'shop_subscription_plans', key: 'id' },
       },
@@ -65,9 +65,9 @@ module.exports = {
     await queryInterface.addIndex('shop_subscriptions', ['shop_id', 'status'], { name: 'idx_shop_subs_shop_status' });
 
     await queryInterface.createTable('expense_categories', {
-      id: { type: Sequelize.INTEGER, primaryKey: true, autoIncrement: true },
+      id: { type: Sequelize.UUID, primaryKey: true, defaultValue: Sequelize.UUIDV4 },
       shop_id: {
-        type: Sequelize.INTEGER,
+        type: Sequelize.UUID,
         allowNull: false,
         references: { model: 'shops', key: 'id' },
         onDelete: 'CASCADE',
@@ -79,9 +79,9 @@ module.exports = {
     await queryInterface.addIndex('expense_categories', ['shop_id'], { name: 'idx_expense_categories_shop' });
 
     await queryInterface.createTable('ledger', {
-      id: { type: Sequelize.INTEGER, primaryKey: true, autoIncrement: true },
+      id: { type: Sequelize.UUID, primaryKey: true, defaultValue: Sequelize.UUIDV4 },
       shop_id: {
-        type: Sequelize.INTEGER,
+        type: Sequelize.UUID,
         allowNull: false,
         references: { model: 'shops', key: 'id' },
         onDelete: 'CASCADE',
@@ -89,7 +89,7 @@ module.exports = {
       type: { type: Sequelize.ENUM('credit', 'debit'), allowNull: false },
       amount: { type: Sequelize.DECIMAL(10, 2), allowNull: false },
       reference: { type: Sequelize.STRING(50) },
-      reference_id: { type: Sequelize.INTEGER },
+      reference_id: { type: Sequelize.UUID },
       entry_date: { type: Sequelize.DATEONLY, allowNull: false, defaultValue: Sequelize.literal('CURRENT_DATE') },
       ...ts,
     });
@@ -97,7 +97,7 @@ module.exports = {
 
     // Tenant membership + member govt id on users
     await queryInterface.addColumn('users', 'shop_id', {
-      type: Sequelize.INTEGER,
+      type: Sequelize.UUID,
       references: { model: 'shops', key: 'id' },
       onDelete: 'SET NULL',
     });

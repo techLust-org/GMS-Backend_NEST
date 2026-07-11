@@ -1,17 +1,17 @@
-import { Table, Column, Model, DataType, PrimaryKey, AutoIncrement } from 'sequelize-typescript';
+import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
 
 @Table({ tableName: 'shops', underscored: true })
 export class Shop extends Model {
   @PrimaryKey
-  @AutoIncrement
-  @Column(DataType.INTEGER)
-  id: number;
+  @Default(DataType.UUIDV4)
+  @Column(DataType.UUID)
+  id: string;
 
   @Column({ type: DataType.STRING(150), allowNull: false })
   name: string;
 
-  @Column({ type: DataType.INTEGER, allowNull: false })
-  owner_id: number;
+  @Column({ type: DataType.UUID, allowNull: false })
+  owner_id: string;
 
   @Column(DataType.STRING(20))
   phone: string;
@@ -24,6 +24,9 @@ export class Shop extends Model {
 
   @Column(DataType.TEXT)
   logo_url: string;
+
+  @Column(DataType.STRING(7))
+  theme_color: string;
 
   @Column({ type: DataType.BOOLEAN, allowNull: false, defaultValue: false })
   is_active: boolean;

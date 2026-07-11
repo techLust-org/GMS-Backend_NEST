@@ -18,7 +18,7 @@ export class ProductsService {
   ) {}
 
   // Buying stock costs the owner money — log a "Product Cost" (money out) row.
-  private async recordStockExpense(shopId: number, product: any, quantityAdded: number) {
+  private async recordStockExpense(shopId: string, product: any, quantityAdded: number) {
     if (quantityAdded <= 0) return;
     const costPrice = parseFloat(product.cost_price) || 0;
     const amount = costPrice * quantityAdded;
@@ -43,17 +43,32 @@ export class ProductsService {
     });
   }
 
-  async list(shopId: number, query: any) {
-    const { category, lowStock } = query;
+  async list(shopId: string, query: any) {
+    const { category, lowStock, page = 1, limit = 10 } = query;
     const where: any = { shop_id: shopId, is_active: true };
     if (category) where.category = category;
-    const products: any[] = await this.product.findAll({ where, order: [['name', 'ASC']] });
-    let result = products;
-    if (lowStock === 'true') result = products.filter((p) => p.stock_qty <= p.low_stock_threshold);
-    return result;
+
+    if (lowStock === 'true') {
+      // stock_qty <= low_stock_threshold is a column-to-column comparison,
+      // so filter in memory rather than pushing it into the WHERE clause.
+      const products: any[] = await this.product.findAll({ where, order: [['name', 'ASC']] });
+      const filtered = products.filter((p) => p.stock_qty <= p.low_stock_threshold);
+      const offset = (page - 1) * limit;
+      const rows = filtered.slice(offset, offset + Number(limit));
+      return new ApiPayload(rows, 'Products fetched', { total: filtered.length, page: +page, limit: +limit });
+    }
+
+    const offset = (page - 1) * limit;
+    const { count, rows } = await this.product.findAndCountAll({
+      where,
+      order: [['name', 'ASC']],
+      limit: parseInt(limit),
+      offset: parseInt(String(offset), 10),
+    });
+    return new ApiPayload(rows, 'Products fetched', { total: count, page: +page, limit: +limit });
   }
 
-  async create(shopId: number, body: any) {
+  async create(shopId: string, body: any) {
     const { name, description, costPrice, discount, sellPrice, stockQty,
       category, sku, photoUrl, lowStockThreshold } = body;
     if (!name || sellPrice === undefined) throw new AppError('Name and sell price required', 400);
@@ -72,7 +87,7 @@ export class ProductsService {
     return new ApiPayload(product, 'Product created');
   }
 
-  async get(shopId: number, id: number) {
+  async get(shopId: string, id: string) {
     const product = await this.product.findOne({
       where: { id, shop_id: shopId },
       include: [{ model: ProductSale, as: 'sales', limit: 10, order: [['created_at', 'DESC']] }],
@@ -81,7 +96,7 @@ export class ProductsService {
     return product;
   }
 
-  async update(shopId: number, id: number, body: any) {
+  async update(shopId: string, id: string, body: any) {
     const product: any = await this.product.findOne({ where: { id, shop_id: shopId } });
     if (!product) throw new AppError('Product not found', 404);
     const { name, description, costPrice, discount, sellPrice, category, sku,
@@ -110,14 +125,14 @@ export class ProductsService {
     return new ApiPayload(product, 'Product updated');
   }
 
-  async remove(shopId: number, id: number) {
+  async remove(shopId: string, id: string) {
     const product: any = await this.product.findOne({ where: { id, shop_id: shopId } });
     if (!product) throw new AppError('Product not found', 404);
     await product.update({ is_active: false });
     return new ApiPayload(null, 'Product deleted');
   }
 
-  async restock(shopId: number, id: number, body: any) {
+  async restock(shopId: string, id: string, body: any) {
     const product: any = await this.product.findOne({ where: { id, shop_id: shopId } });
     if (!product) throw new AppError('Product not found', 404);
     const { quantity } = body;
@@ -128,7 +143,7 @@ export class ProductsService {
     return new ApiPayload(product, 'Stock updated');
   }
 
-  async recordSale(shopId: number, userId: number, body: any) {
+  async recordSale(shopId: string, userId: string, body: any) {
     const { productId, memberId, quantity = 1, paymentMode = 'cash', orderMode = 'offline', transactionId } = body;
     const product: any = await this.product.findOne({ where: { id: productId, shop_id: shopId } });
     if (!product) throw new AppError('Product not found', 404);
@@ -175,7 +190,7 @@ export class ProductsService {
     return new ApiPayload(sale, 'Sale recorded');
   }
 
-  async getSales(shopId: number, query: any) {
+  async getSales(shopId: string, query: any) {
     const { from, to, productId } = query;
     const where: any = { shop_id: shopId };
     if (productId) where.product_id = productId;

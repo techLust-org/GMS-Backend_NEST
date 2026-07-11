@@ -24,38 +24,54 @@ export class SuperadminController {
     return this.superadminService.listShops(query);
   }
 
+  @Post('owner-avatar/presign')
+  presignOwnerAvatar(@Body() body: any) {
+    return this.superadminService.presignOwnerAvatar(body);
+  }
+
+  @Post('shops')
+  @HttpCode(201)
+  createShop(@Body() body: any) {
+    return this.superadminService.createShop(body);
+  }
+
   @Get('shops/:id')
   shopDetail(@Param('id') id: string) {
-    return this.superadminService.shopDetail(+id);
+    return this.superadminService.shopDetail(id);
   }
 
   @Post('shops/:id/grant')
   @HttpCode(201)
   grant(@Param('id') id: string, @Body() body: any) {
-    return this.superadminService.grant(+id, body);
+    return this.superadminService.grant(id, body);
   }
 
   @Post('shops/:id/revoke')
   @HttpCode(200)
   revoke(@Param('id') id: string) {
-    return this.superadminService.revoke(+id);
+    return this.superadminService.revoke(id);
   }
 
   @Post('shops/:id/extend')
   @HttpCode(200)
   extend(@Param('id') id: string, @Body() body: any) {
-    return this.superadminService.extend(+id, body);
+    return this.superadminService.extend(id, body);
   }
 
   @Patch('shops/:id/owner-status')
   setOwnerStatus(@Param('id') id: string, @Body() body: any) {
-    return this.superadminService.setOwnerStatus(+id, body);
+    return this.superadminService.setOwnerStatus(id, body);
+  }
+
+  @Patch('shops/:id/theme')
+  setShopTheme(@Param('id') id: string, @Body() body: any) {
+    return this.superadminService.setShopTheme(id, body);
   }
 
   @Post('shops/:id/notify-renewal')
   @HttpCode(200)
   notifyRenewal(@Param('id') id: string) {
-    return this.superadminService.notifyRenewal(+id);
+    return this.superadminService.notifyRenewal(id);
   }
 
   // Platform plans
@@ -72,12 +88,12 @@ export class SuperadminController {
 
   @Put('plans/:id')
   updatePlan(@Param('id') id: string, @Body() body: any) {
-    return this.superadminService.updatePlan(+id, body);
+    return this.superadminService.updatePlan(id, body);
   }
 
   @Delete('plans/:id')
   deletePlan(@Param('id') id: string) {
-    return this.superadminService.deletePlan(+id);
+    return this.superadminService.deletePlan(id);
   }
 
   // Revenue / subscriptions log
@@ -88,7 +104,7 @@ export class SuperadminController {
 
   // Account
   @Put('change-password')
-  changePassword(@CurrentUser('id') userId: number, @Body() body: any) {
+  changePassword(@CurrentUser('id') userId: string, @Body() body: any) {
     return this.superadminService.changePassword(userId, body);
   }
 }

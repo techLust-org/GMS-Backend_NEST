@@ -33,14 +33,14 @@ export class MemberShopService {
     private readonly notificationService: NotificationService,
   ) {}
 
-  async listProducts(shopId: number, query: any) {
+  async listProducts(shopId: string, query: any) {
     const { category } = query;
     const where: any = { shop_id: shopId, is_active: true };
     if (category) where.category = category;
     return this.product.findAll({ where, order: [['name', 'ASC']] });
   }
 
-  async createOrder(shopId: number, body: any) {
+  async createOrder(shopId: string, body: any) {
     const items = normalizeItems(body.items);
 
     let total = 0;
@@ -67,7 +67,7 @@ export class MemberShopService {
     };
   }
 
-  async purchase(shopId: number, userId: number, body: any) {
+  async purchase(shopId: string, userId: string, body: any) {
     const t: any = await this.sequelize.transaction();
     try {
       const items = normalizeItems(body.items);
@@ -182,7 +182,7 @@ export class MemberShopService {
     }
   }
 
-  async myOrders(shopId: number, userId: number) {
+  async myOrders(shopId: string, userId: string) {
     const sales: any[] = await this.productSale.findAll({
       where: { shop_id: shopId, member_id: userId },
       include: [{ model: Product, as: 'product', attributes: ['id', 'name', 'photo_url', 'category'] }],

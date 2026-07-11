@@ -4,6 +4,7 @@ import { Op } from 'sequelize';
 import { User, Role, Subscription, SubscriptionPlan } from '../../models';
 import { AuthCryptoService } from '../../common/auth-crypto.service';
 import { NotificationService } from '../../shared/notification.service';
+import { S3Service } from '../../shared/s3.service';
 import { AppError } from '../../common/app-error';
 import { ApiPayload } from '../../common/api-payload';
 
@@ -16,9 +17,17 @@ export class UsersService {
     @InjectModel(SubscriptionPlan) private readonly subscriptionPlan: typeof SubscriptionPlan,
     private readonly auth: AuthCryptoService,
     private readonly notificationService: NotificationService,
+    private readonly s3: S3Service,
   ) {}
 
-  async list(shopId: number, query: any) {
+  // profile_pic is stored as a raw S3 object key — resolve it to a
+  // short-lived signed URL right before the response goes out.
+  private async withProfilePicUrl(u: any) {
+    if (u?.profile_pic) u.profile_pic = await this.s3.getViewUrl(u.profile_pic);
+    return u;
+  }
+
+  async list(shopId: string, query: any) {
     const { role, status, search, page = 1, limit = 20 } = query;
     const where: any = { shop_id: shopId };
     const roleWhere: any = {};
@@ -49,10 +58,11 @@ export class UsersService {
       offset: parseInt(String(offset), 10),
       order: [['created_at', 'DESC']],
     });
+    await Promise.all(rows.map((u: any) => this.withProfilePicUrl(u)));
     return new ApiPayload(rows, 'Users fetched', { total: count, page: +page, limit: +limit });
   }
 
-  async create(shopId: number, body: any) {
+  async create(shopId: string, body: any) {
     const { role, firstName, lastName, email, password, phone, dateOfBirth, gender,
       hireDate, salary, specialization, bio, emergencyContact, govtIdUrl } = body;
 
@@ -86,7 +96,7 @@ export class UsersService {
     return new ApiPayload(result, 'User created');
   }
 
-  async get(shopId: number, id: number) {
+  async get(shopId: string, id: string) {
     const user = await this.user.findOne({
       where: { id, shop_id: shopId },
       include: [
@@ -98,10 +108,10 @@ export class UsersService {
       ],
     });
     if (!user) throw new AppError('User not found', 404);
-    return user;
+    return this.withProfilePicUrl(user);
   }
 
-  async update(shopId: number, id: number, body: any) {
+  async update(shopId: string, id: string, body: any) {
     const user: any = await this.user.findOne({ where: { id, shop_id: shopId } });
     if (!user) throw new AppError('User not found', 404);
     const { firstName, lastName, phone, dateOfBirth, gender, hireDate, salary,
@@ -123,14 +133,14 @@ export class UsersService {
     return new ApiPayload(result, 'User updated');
   }
 
-  async remove(shopId: number, id: number) {
+  async remove(shopId: string, id: string) {
     const user: any = await this.user.findOne({ where: { id, shop_id: shopId } });
     if (!user) throw new AppError('User not found', 404);
     await user.update({ status: 'inactive' });
     return new ApiPayload(null, 'User deactivated');
   }
 
-  async setStatus(shopId: number, id: number, body: any) {
+  async setStatus(shopId: string, id: string, body: any) {
     const user: any = await this.user.findOne({ where: { id, shop_id: shopId } });
     if (!user) throw new AppError('User not found', 404);
     const { status } = body;
@@ -139,7 +149,7 @@ export class UsersService {
     return new ApiPayload(null, `User ${status}`);
   }
 
-  async notifyRenewal(shopId: number, id: number) {
+  async notifyRenewal(shopId: string, id: string) {
     const user: any = await this.user.findOne({ where: { id, shop_id: shopId } });
     if (!user) throw new AppError('User not found', 404);
 

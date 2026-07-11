@@ -3,7 +3,7 @@
 module.exports = {
   async up(queryInterface, Sequelize) {
     await queryInterface.createTable('subscription_plans', {
-      id: { type: Sequelize.INTEGER, primaryKey: true, autoIncrement: true },
+      id: { type: Sequelize.UUID, primaryKey: true, defaultValue: Sequelize.UUIDV4 },
       name: { type: Sequelize.STRING(100), allowNull: false },
       duration: { type: Sequelize.DataTypes.ENUM('monthly', 'quarterly', 'yearly'), allowNull: false },
       duration_days: { type: Sequelize.INTEGER, allowNull: false },

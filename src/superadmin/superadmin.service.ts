@@ -2,13 +2,26 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel, InjectConnection } from '@nestjs/sequelize';
 import { Sequelize } from 'sequelize-typescript';
 import { Op, fn, col } from 'sequelize';
+import { randomBytes } from 'crypto';
 import {
   Shop, ShopSubscription, ShopSubscriptionPlan, User, Role, Subscription, Product, Expense,
 } from '../models';
 import { AuthCryptoService } from '../common/auth-crypto.service';
 import { NotificationService } from '../shared/notification.service';
+import { S3Service } from '../shared/s3.service';
+import { MailService } from '../shared/mail.service';
 import { AppError } from '../common/app-error';
 import { ApiPayload } from '../common/api-payload';
+
+// Unambiguous character set (no 0/O/1/l/I) so temp passwords are easy to
+// read/retype if the super-admin has to relay one manually.
+const TEMP_PASSWORD_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+function generateTempPassword(length = 12): string {
+  const bytes = randomBytes(length);
+  let out = '';
+  for (let i = 0; i < length; i++) out += TEMP_PASSWORD_CHARS[bytes[i] % TEMP_PASSWORD_CHARS.length];
+  return out;
+}
 
 const today = () => new Date().toISOString().split('T')[0];
 const addDays = (base: any, n: number) => { const d = new Date(base); d.setDate(d.getDate() + n); return d; };
@@ -28,9 +41,11 @@ export class SuperadminService {
     @InjectConnection() private readonly sequelize: Sequelize,
     private readonly auth: AuthCryptoService,
     private readonly notificationService: NotificationService,
+    private readonly s3: S3Service,
+    private readonly mail: MailService,
   ) {}
 
-  private activeSubFor(shopId: number) {
+  private activeSubFor(shopId: string) {
     return this.shopSubscription.findOne({
       where: { shop_id: shopId, status: 'active', end_date: { [Op.gte]: today() } },
       include: [{ model: ShopSubscriptionPlan, as: 'plan' }],
@@ -115,6 +130,7 @@ export class SuperadminService {
         phone: shop.phone,
         address: shop.address,
         logoUrl: shop.logo_url,
+        themeColor: shop.theme_color,
         createdAt: shop.createdAt,
         owner: shop.owner ? {
           id: shop.owner.id,
@@ -143,7 +159,89 @@ export class SuperadminService {
         : data;
   }
 
-  async shopDetail(id: number) {
+  // Step 1: presign a spot in S3 for the new owner's profile picture, before
+  // the shop/user even exist — namespaced under "platform" like any other
+  // account with no shop yet.
+  async presignOwnerAvatar(body: any) {
+    const { contentType } = body;
+    if (!contentType) throw new AppError('contentType required', 400);
+    const key = this.s3.buildProfilePictureKey(null, 'admin', contentType);
+    const uploadUrl = await this.s3.getUploadUrl(key, contentType);
+    return new ApiPayload({ uploadUrl, key }, 'Upload URL generated');
+  }
+
+  async createShop(body: any) {
+    const {
+      shopName, ownerFirstName, ownerLastName, ownerEmail, ownerPhone, profilePicKey,
+    } = body;
+    if (!shopName || !ownerFirstName || !ownerLastName || !ownerEmail) {
+      throw new AppError('shopName, ownerFirstName, ownerLastName and ownerEmail are required', 400);
+    }
+    if (profilePicKey && !String(profilePicKey).startsWith('platform/shop/profiles/avatar_')) {
+      throw new AppError('Invalid profile picture key', 400);
+    }
+
+    const t = await this.sequelize.transaction();
+    try {
+      const existing = await this.user.findOne({ where: { email: ownerEmail }, transaction: t });
+      if (existing) throw new AppError('An account with this email already exists', 409);
+
+      const adminRole = await this.role.findOne({ where: { name: 'admin' }, transaction: t });
+      if (!adminRole) throw new AppError('Admin role not configured', 500);
+
+      const tempPassword = generateTempPassword();
+      const password_hash = await this.auth.hash(tempPassword);
+
+      const owner: any = await this.user.create(
+        {
+          role_id: adminRole.id,
+          first_name: ownerFirstName,
+          last_name: ownerLastName,
+          email: ownerEmail,
+          password_hash,
+          phone: ownerPhone || null,
+          profile_pic: profilePicKey || null,
+          status: 'active',
+        } as any,
+        { transaction: t },
+      );
+
+      const shop: any = await this.shop.create(
+        {
+          name: shopName,
+          owner_id: owner.id,
+          phone: ownerPhone || null,
+          email: ownerEmail,
+          is_active: false,
+        } as any,
+        { transaction: t },
+      );
+
+      await owner.update({ shop_id: shop.id }, { transaction: t });
+      await t.commit();
+
+      const emailSent = await this.mail.sendOwnerWelcomeEmail(
+        ownerEmail, ownerFirstName, shopName, tempPassword,
+      );
+
+      return new ApiPayload(
+        {
+          shop: { id: shop.id, name: shop.name },
+          owner: { id: owner.id, email: owner.email },
+          emailSent,
+          // Only handed back when the email couldn't be sent, so the
+          // super-admin can relay it manually — never returned otherwise.
+          tempPassword: emailSent ? undefined : tempPassword,
+        },
+        emailSent ? 'Owner created and welcome email sent' : 'Owner created, but the welcome email could not be sent',
+      );
+    } catch (err) {
+      await t.rollback();
+      throw err;
+    }
+  }
+
+  async shopDetail(id: string) {
     const shop: any = await this.shop.findByPk(id, {
       include: [{ model: User, as: 'owner', attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'status', 'createdAt'] }],
     });
@@ -182,6 +280,7 @@ export class SuperadminService {
       phone: shop.phone,
       address: shop.address,
       logoUrl: shop.logo_url,
+      themeColor: shop.theme_color,
       createdAt: shop.createdAt,
       isActive: !!active,
       owner: shop.owner ? {
@@ -213,7 +312,7 @@ export class SuperadminService {
     };
   }
 
-  async grant(id: number, body: any) {
+  async grant(id: string, body: any) {
     const t = await this.sequelize.transaction();
     try {
       const { planId, days } = body;
@@ -258,7 +357,7 @@ export class SuperadminService {
     }
   }
 
-  async revoke(id: number) {
+  async revoke(id: string) {
     const t = await this.sequelize.transaction();
     try {
       const shop: any = await this.shop.findByPk(id, { transaction: t });
@@ -278,7 +377,7 @@ export class SuperadminService {
     }
   }
 
-  async extend(id: number, body: any) {
+  async extend(id: string, body: any) {
     const { days } = body;
     const n = Number(days);
     if (!n || n <= 0) throw new AppError('days must be a positive number', 400);
@@ -293,7 +392,7 @@ export class SuperadminService {
     return new ApiPayload({ endDate: iso(newEnd) }, `Extended by ${n} days`);
   }
 
-  async setOwnerStatus(id: number, body: any) {
+  async setOwnerStatus(id: string, body: any) {
     const { status } = body;
     if (!['active', 'suspended'].includes(status)) throw new AppError('Invalid status', 400);
 
@@ -304,7 +403,23 @@ export class SuperadminService {
     return new ApiPayload(null, `Owner account ${status}`);
   }
 
-  async notifyRenewal(id: number) {
+  async setShopTheme(id: string, body: any) {
+    const { themeColor } = body;
+    if (themeColor !== null && themeColor !== undefined && themeColor !== '') {
+      if (!/^#[0-9A-Fa-f]{6}$/.test(themeColor)) {
+        throw new AppError('themeColor must be a hex color like #D7FF45', 400);
+      }
+    }
+
+    const shop: any = await this.shop.findByPk(id);
+    if (!shop) throw new AppError('Shop not found', 404);
+
+    const normalized = themeColor ? themeColor : null;
+    await shop.update({ theme_color: normalized });
+    return new ApiPayload({ themeColor: normalized }, normalized ? 'Theme color updated' : 'Theme color reset to default');
+  }
+
+  async notifyRenewal(id: string) {
     const shop: any = await this.shop.findByPk(id);
     if (!shop) throw new AppError('Shop not found', 404);
     if (!shop.owner_id) throw new AppError('This shop has no owner to notify', 400);
@@ -355,7 +470,7 @@ export class SuperadminService {
     return new ApiPayload(plan, 'Plan created');
   }
 
-  async updatePlan(id: number, body: any) {
+  async updatePlan(id: string, body: any) {
     const plan: any = await this.shopSubscriptionPlan.findByPk(id);
     if (!plan) throw new AppError('Plan not found', 404);
 
@@ -373,7 +488,7 @@ export class SuperadminService {
     return new ApiPayload(plan, 'Plan updated');
   }
 
-  async deletePlan(id: number) {
+  async deletePlan(id: string) {
     const plan: any = await this.shopSubscriptionPlan.findByPk(id);
     if (!plan) throw new AppError('Plan not found', 404);
 
@@ -408,7 +523,7 @@ export class SuperadminService {
     }));
   }
 
-  async changePassword(userId: number, body: any) {
+  async changePassword(userId: string, body: any) {
     const { currentPassword, newPassword } = body;
     if (!newPassword || String(newPassword).length < 6) {
       throw new AppError('New password must be at least 6 characters', 400);

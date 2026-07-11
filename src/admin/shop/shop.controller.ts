@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Put, Post, Delete, Body, UseGuards } from '@nestjs/common';
 import { AdminShopService } from './shop.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -13,12 +13,27 @@ export class AdminShopController {
   constructor(private readonly shopService: AdminShopService) {}
 
   @Get()
-  getProfile(@ShopId() shopId: number) {
+  getProfile(@ShopId() shopId: string) {
     return this.shopService.getProfile(shopId);
   }
 
   @Put()
-  updateProfile(@ShopId() shopId: number, @Body() body: any) {
+  updateProfile(@ShopId() shopId: string, @Body() body: any) {
     return this.shopService.updateProfile(shopId, body);
+  }
+
+  @Post('logo/presign')
+  presignLogo(@ShopId() shopId: string, @Body() body: any) {
+    return this.shopService.presignLogo(shopId, body);
+  }
+
+  @Put('logo')
+  updateLogo(@ShopId() shopId: string, @Body() body: any) {
+    return this.shopService.updateLogo(shopId, body);
+  }
+
+  @Delete('logo')
+  removeLogo(@ShopId() shopId: string) {
+    return this.shopService.removeLogo(shopId);
   }
 }

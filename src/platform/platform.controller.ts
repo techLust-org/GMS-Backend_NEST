@@ -19,7 +19,7 @@ export class PlatformController {
   }
 
   @Get('subscription')
-  getSubscription(@ShopId() shopId: number) {
+  getSubscription(@ShopId() shopId: string) {
     return this.platformService.getSubscription(shopId);
   }
 
@@ -32,7 +32,7 @@ export class PlatformController {
   @Post('activate')
   @HttpCode(201)
   @ResponseMessage('Platform subscription activated')
-  activate(@ShopId() shopId: number, @Body() body: any) {
+  activate(@ShopId() shopId: string, @Body() body: any) {
     return this.platformService.activate(shopId, body);
   }
 }

@@ -1,15 +1,15 @@
-import { Table, Column, Model, DataType, PrimaryKey, AutoIncrement } from 'sequelize-typescript';
+import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
 
 // Backend-only cashflow log per shop.
 @Table({ tableName: 'ledger', underscored: true })
 export class Ledger extends Model {
   @PrimaryKey
-  @AutoIncrement
-  @Column(DataType.INTEGER)
-  id: number;
+  @Default(DataType.UUIDV4)
+  @Column(DataType.UUID)
+  id: string;
 
-  @Column({ type: DataType.INTEGER, allowNull: false })
-  shop_id: number;
+  @Column({ type: DataType.UUID, allowNull: false })
+  shop_id: string;
 
   @Column({ type: DataType.ENUM('credit', 'debit'), allowNull: false })
   type: string;
@@ -20,8 +20,8 @@ export class Ledger extends Model {
   @Column(DataType.STRING(50))
   reference: string;
 
-  @Column(DataType.INTEGER)
-  reference_id: number;
+  @Column(DataType.UUID)
+  reference_id: string;
 
   @Column(DataType.DATEONLY)
   entry_date: string;

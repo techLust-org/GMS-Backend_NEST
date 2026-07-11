@@ -2,10 +2,10 @@
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => sequelize.define('DietPlan', {
-  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  shop_id: { type: DataTypes.INTEGER, allowNull: false },
-  trainer_id: { type: DataTypes.INTEGER, allowNull: false },
-  member_id: { type: DataTypes.INTEGER, allowNull: false },
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  shop_id: { type: DataTypes.UUID, allowNull: false },
+  trainer_id: { type: DataTypes.UUID, allowNull: false },
+  member_id: { type: DataTypes.UUID, allowNull: false },
   title: { type: DataTypes.STRING(150), allowNull: false },
   description: { type: DataTypes.TEXT },
   daily_calories: { type: DataTypes.INTEGER },

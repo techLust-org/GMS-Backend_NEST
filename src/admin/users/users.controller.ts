@@ -15,39 +15,39 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  list(@ShopId() shopId: number, @Query() query: any) {
+  list(@ShopId() shopId: string, @Query() query: any) {
     return this.usersService.list(shopId, query);
   }
 
   @Post()
   @HttpCode(201)
-  create(@ShopId() shopId: number, @Body() body: any) {
+  create(@ShopId() shopId: string, @Body() body: any) {
     return this.usersService.create(shopId, body);
   }
 
   @Get(':id')
-  get(@ShopId() shopId: number, @Param('id') id: string) {
-    return this.usersService.get(shopId, +id);
+  get(@ShopId() shopId: string, @Param('id') id: string) {
+    return this.usersService.get(shopId, id);
   }
 
   @Put(':id')
-  update(@ShopId() shopId: number, @Param('id') id: string, @Body() body: any) {
-    return this.usersService.update(shopId, +id, body);
+  update(@ShopId() shopId: string, @Param('id') id: string, @Body() body: any) {
+    return this.usersService.update(shopId, id, body);
   }
 
   @Delete(':id')
-  remove(@ShopId() shopId: number, @Param('id') id: string) {
-    return this.usersService.remove(shopId, +id);
+  remove(@ShopId() shopId: string, @Param('id') id: string) {
+    return this.usersService.remove(shopId, id);
   }
 
   @Put(':id/status')
-  setStatus(@ShopId() shopId: number, @Param('id') id: string, @Body() body: any) {
-    return this.usersService.setStatus(shopId, +id, body);
+  setStatus(@ShopId() shopId: string, @Param('id') id: string, @Body() body: any) {
+    return this.usersService.setStatus(shopId, id, body);
   }
 
   @Post(':id/notify-renewal')
   @HttpCode(200)
-  notifyRenewal(@ShopId() shopId: number, @Param('id') id: string) {
-    return this.usersService.notifyRenewal(shopId, +id);
+  notifyRenewal(@ShopId() shopId: string, @Param('id') id: string) {
+    return this.usersService.notifyRenewal(shopId, id);
   }
 }

@@ -13,30 +13,30 @@ export class MemberSubscriptionController {
   constructor(private readonly subscriptionService: MemberSubscriptionService) {}
 
   @Get('subscription-plans')
-  getPlans(@ShopId() shopId: number) {
+  getPlans(@ShopId() shopId: string) {
     return this.subscriptionService.getPlans(shopId);
   }
 
   @Get('subscriptions')
-  mySubscriptions(@ShopId() shopId: number, @CurrentUser('id') userId: number) {
+  mySubscriptions(@ShopId() shopId: string, @CurrentUser('id') userId: string) {
     return this.subscriptionService.mySubscriptions(shopId, userId);
   }
 
   @Get('subscriptions/active')
-  activeSubscription(@ShopId() shopId: number, @CurrentUser('id') userId: number) {
+  activeSubscription(@ShopId() shopId: string, @CurrentUser('id') userId: string) {
     return this.subscriptionService.activeSubscription(shopId, userId);
   }
 
   @Post('subscriptions/create-order')
   @HttpCode(200)
-  createOrder(@ShopId() shopId: number, @CurrentUser('id') userId: number, @Body() body: any) {
+  createOrder(@ShopId() shopId: string, @CurrentUser('id') userId: string, @Body() body: any) {
     return this.subscriptionService.createOrder(shopId, userId, body);
   }
 
   @Post('subscriptions')
   @HttpCode(201)
   @ResponseMessage('Subscription activated')
-  purchase(@ShopId() shopId: number, @CurrentUser('id') userId: number, @Body() body: any) {
+  purchase(@ShopId() shopId: string, @CurrentUser('id') userId: string, @Body() body: any) {
     return this.subscriptionService.purchase(shopId, userId, body);
   }
 }

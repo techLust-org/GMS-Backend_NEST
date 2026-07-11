@@ -15,33 +15,37 @@ export class TrainerMembersController {
   constructor(private readonly membersService: TrainerMembersService) {}
 
   @Get()
-  myMembers(@ShopId() shopId: number, @CurrentUser('id') trainerId: number) {
-    return this.membersService.myMembers(shopId, trainerId);
+  myMembers(
+    @ShopId() shopId: string,
+    @CurrentUser('id') trainerId: string,
+    @Query() query: any,
+  ) {
+    return this.membersService.myMembers(shopId, trainerId, query);
   }
 
   @Get('available')
-  availableMembers(@ShopId() shopId: number, @Query() query: any) {
+  availableMembers(@ShopId() shopId: string, @Query() query: any) {
     return this.membersService.availableMembers(shopId, query);
   }
 
   @Post(':id/assign')
   @HttpCode(201)
-  assign(@ShopId() shopId: number, @CurrentUser('id') trainerId: number, @Param('id') id: string) {
-    return this.membersService.assign(shopId, trainerId, +id);
+  assign(@ShopId() shopId: string, @CurrentUser('id') trainerId: string, @Param('id') id: string) {
+    return this.membersService.assign(shopId, trainerId, id);
   }
 
   @Delete(':id/assign')
-  unassign(@ShopId() shopId: number, @CurrentUser('id') trainerId: number, @Param('id') id: string) {
-    return this.membersService.unassign(shopId, trainerId, +id);
+  unassign(@ShopId() shopId: string, @CurrentUser('id') trainerId: string, @Param('id') id: string) {
+    return this.membersService.unassign(shopId, trainerId, id);
   }
 
   @Get(':id/attendance')
   memberAttendance(
-    @ShopId() shopId: number,
-    @CurrentUser('id') trainerId: number,
+    @ShopId() shopId: string,
+    @CurrentUser('id') trainerId: string,
     @Param('id') id: string,
     @Query() query: any,
   ) {
-    return this.membersService.memberAttendance(shopId, trainerId, +id, query);
+    return this.membersService.memberAttendance(shopId, trainerId, id, query);
   }
 }

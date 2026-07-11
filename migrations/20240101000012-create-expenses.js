@@ -3,7 +3,7 @@
 module.exports = {
   async up(queryInterface, Sequelize) {
     await queryInterface.createTable('expenses', {
-      id: { type: Sequelize.INTEGER, primaryKey: true, autoIncrement: true },
+      id: { type: Sequelize.UUID, primaryKey: true, defaultValue: Sequelize.UUIDV4 },
       category: {
         type: Sequelize.DataTypes.ENUM('trainer_salary', 'equipment', 'utilities', 'rent', 'maintenance', 'other'),
         allowNull: false,
@@ -13,7 +13,7 @@ module.exports = {
       expense_date: { type: Sequelize.DATEONLY, allowNull: false, defaultValue: Sequelize.literal('CURRENT_DATE') },
       paid_to: { type: Sequelize.STRING(150) },
       trainer_id: {
-        type: Sequelize.INTEGER,
+        type: Sequelize.UUID,
         references: { model: 'users', key: 'id' },
         onDelete: 'SET NULL',
       },

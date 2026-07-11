@@ -110,6 +110,9 @@
   .modal-body { padding: 22px; }
   .modal-foot { padding: 16px 22px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .avatar-preview { width: 56px; height: 56px; border-radius: 50%; background: var(--panel2); border: 1px solid var(--border);
+    background-size: cover; background-position: center; display: flex; align-items: center; justify-content: center;
+    color: var(--muted); font-size: 22px; flex-shrink: 0; }
 
   .detail-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
   .stat-box { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
@@ -307,7 +310,8 @@ async function viewShops(root) {
       el('select', { onchange: (e) => { shopStatus = e.target.value; loadShops(); } },
         el('option', { value: '' }, 'All statuses'),
         el('option', { value: 'active', ...(shopStatus==='active'?{selected:''}:{}) }, 'Active'),
-        el('option', { value: 'inactive', ...(shopStatus==='inactive'?{selected:''}:{}) }, 'Inactive'))));
+        el('option', { value: 'inactive', ...(shopStatus==='inactive'?{selected:''}:{}) }, 'Inactive')),
+      el('button', { class: 'btn', onclick: openCreateShop }, '+ New Owner / Shop')));
   root.append(head);
   const card = el('div', { class: 'card' }); root.append(card);
   window._shopCard = card;
@@ -327,6 +331,7 @@ async function loadShops() {
       el('thead', {}, el('tr', {},
         el('th', {}, 'Shop'), el('th', {}, 'Owner'), el('th', {}, 'Members'),
         el('th', {}, 'Plan'), el('th', {}, 'Expires'), el('th', {}, 'Status'),
+        el('th', {}, 'Theme'),
         el('th', { style: 'text-align:right' }, 'Actions'))),
       el('tbody', {}, ...shops.map(shopRow)));
     card.innerHTML = ''; card.append(table);
@@ -353,6 +358,7 @@ function shopRow(s) {
     el('td', {}, s.isActive
       ? el('span', { class: 'badge '+(expiring?'warn':'on') }, el('span',{class:'dot'}), expiring?'Expiring':'Active')
       : el('span', { class: 'badge off' }, el('span',{class:'dot'}), 'Inactive')),
+    el('td', {}, themeCell(s)),
     el('td', {},
       el('div', { class: 'row-actions' },
         el('button', { class: 'btn ghost sm', onclick: () => openShopDetail(s.id) }, 'View'),
@@ -368,6 +374,117 @@ async function notifyRenewal(shop) {
     await api(`/shops/${shop.id}/notify-renewal`, { method: 'POST' });
     toast(`Renewal reminder sent to ${shop.owner ? shop.owner.name : 'the owner'}`);
   } catch (e) { toast(e.message, false); }
+}
+
+// ---------- Theme color ----------
+const DEFAULT_THEME = '#D7FF45';
+function themeCell(shop) {
+  const current = shop.themeColor || DEFAULT_THEME;
+  const swatch = el('input', {
+    type: 'color', value: current, title: 'Pick a theme color for this shop',
+    style: 'width:34px;height:30px;padding:0;border:1px solid var(--border);border-radius:6px;background:transparent;cursor:pointer',
+  });
+  swatch.addEventListener('change', () => setShopTheme(shop, swatch.value));
+  const row = el('div', { style: 'display:flex;align-items:center;gap:6px' }, swatch);
+  if (shop.themeColor) {
+    row.append(el('button', {
+      class: 'btn ghost sm', title: 'Reset to default',
+      onclick: () => setShopTheme(shop, null),
+    }, '↺'));
+  } else {
+    row.append(el('span', { class: 'cell-sub' }, 'Default'));
+  }
+  return row;
+}
+
+async function setShopTheme(shop, themeColor) {
+  try {
+    await api(`/shops/${shop.id}/theme`, { method: 'PATCH', body: { themeColor } });
+    toast(themeColor ? `Theme updated for ${shop.name}` : `Theme reset to default for ${shop.name}`);
+    loadShops();
+  } catch (e) { toast(e.message, false); }
+}
+
+// ---------- Create Owner / Shop ----------
+async function openCreateShop() {
+  const f = {};
+  const inp = (key, attrs={}) => { const i = el('input', attrs); f[key] = i; return i; };
+
+  let avatarKey = '';
+  let avatarUploading = false;
+  const avatarPreview = el('div', { class: 'avatar-preview' }, '+');
+  const avatarStatus = el('div', { class: 'cell-sub', style: 'margin-top:6px' }, 'No picture selected (optional)');
+  const avatarInput = el('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp' });
+  avatarInput.addEventListener('change', async () => {
+    const file = avatarInput.files[0];
+    if (!file) return;
+    avatarUploading = true;
+    avatarStatus.textContent = 'Uploading…';
+    try {
+      const presign = await api('/owner-avatar/presign', { method: 'POST', body: { contentType: file.type } });
+      await fetch(presign.uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+      avatarKey = presign.key;
+      avatarStatus.textContent = file.name;
+      const reader = new FileReader();
+      reader.onload = () => { avatarPreview.style.backgroundImage = `url(${reader.result})`; avatarPreview.textContent = ''; };
+      reader.readAsDataURL(file);
+    } catch (e) {
+      avatarKey = '';
+      avatarStatus.textContent = 'Upload failed: ' + e.message;
+    } finally { avatarUploading = false; }
+  });
+
+  const close = modal({
+    title: 'Create Owner & Shop',
+    body: el('div', {},
+      el('p', { class: 'cell-sub', style: 'margin-bottom:16px' },
+        'Creates the shop and its owner account. A welcome email with a temporary password is sent to the owner.'),
+      el('div', { class: 'field' }, el('label', {}, 'Shop name'), inp('shopName', { placeholder: 'Iron Paradise Gym' })),
+      el('div', { class: 'grid2' },
+        el('div', { class: 'field' }, el('label', {}, 'Owner first name'), inp('ownerFirstName')),
+        el('div', { class: 'field' }, el('label', {}, 'Owner last name'), inp('ownerLastName'))),
+      el('div', { class: 'grid2' },
+        el('div', { class: 'field' }, el('label', {}, 'Owner email'), inp('ownerEmail', { type: 'email' })),
+        el('div', { class: 'field' }, el('label', {}, 'Owner phone (optional)'), inp('ownerPhone', { type: 'tel' }))),
+      el('div', { class: 'field' },
+        el('label', {}, 'Profile picture (optional)'),
+        el('div', { style: 'display:flex;align-items:center;gap:14px' }, avatarPreview,
+          el('div', {}, avatarInput, avatarStatus)))),
+    foot: (close) => [
+      el('button', { class: 'btn ghost', onclick: close }, 'Cancel'),
+      el('button', { class: 'btn green', onclick: async (ev) => {
+        const payload = {
+          shopName: f.shopName.value.trim(),
+          ownerFirstName: f.ownerFirstName.value.trim(),
+          ownerLastName: f.ownerLastName.value.trim(),
+          ownerEmail: f.ownerEmail.value.trim(),
+          ownerPhone: f.ownerPhone.value.trim(),
+          profilePicKey: avatarKey || undefined,
+        };
+        if (!payload.shopName || !payload.ownerFirstName || !payload.ownerLastName || !payload.ownerEmail)
+          return toast('Shop name, owner name and email are required', false);
+        if (avatarUploading) return toast('Profile picture is still uploading', false);
+        ev.target.disabled = true;
+        try {
+          const res = await api('/shops', { method: 'POST', body: payload });
+          close(); loadShops();
+          if (res.emailSent) {
+            toast(`Owner created — welcome email sent to ${payload.ownerEmail}`);
+          } else {
+            toast('Owner created, but the welcome email failed to send', false);
+            modal({
+              title: 'Email delivery failed — share manually',
+              body: el('div', {},
+                el('p', { style: 'margin-bottom:14px' },
+                  `SMTP isn't configured or delivery failed. Share these credentials with ${payload.ownerFirstName} directly:`),
+                el('div', { class: 'kv' }, el('span', { class: 'k' }, 'Email'), el('span', {}, payload.ownerEmail)),
+                el('div', { class: 'kv' }, el('span', { class: 'k' }, 'Temp password'), el('span', {}, res.tempPassword))),
+              foot: (close2) => [el('button', { class: 'btn', onclick: close2 }, 'Got it')],
+            });
+          }
+        } catch (e) { toast(e.message, false); ev.target.disabled = false; }
+      } }, 'Create')],
+  });
 }
 
 // ---------- Modal helper ----------

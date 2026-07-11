@@ -13,17 +13,17 @@ export class MemberPlansController {
   constructor(private readonly plansService: MemberPlansService) {}
 
   @Get('payments')
-  payments(@CurrentUser('id') userId: number) {
+  payments(@CurrentUser('id') userId: string) {
     return this.plansService.payments(userId);
   }
 
   @Get('workout-plans/active')
-  activeWorkoutPlan(@CurrentUser('id') userId: number) {
+  activeWorkoutPlan(@CurrentUser('id') userId: string) {
     return this.plansService.activeWorkoutPlan(userId);
   }
 
   @Get('diet-plans/active')
-  activeDietPlan(@CurrentUser('id') userId: number) {
+  activeDietPlan(@CurrentUser('id') userId: string) {
     return this.plansService.activeDietPlan(userId);
   }
 }

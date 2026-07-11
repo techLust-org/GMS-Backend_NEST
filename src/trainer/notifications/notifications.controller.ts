@@ -14,22 +14,22 @@ export class TrainerNotificationsController {
   constructor(private readonly inbox: NotificationsInboxService) {}
 
   @Get()
-  list(@CurrentUser('id') userId: number, @Query() query: any) {
+  list(@CurrentUser('id') userId: string, @Query() query: any) {
     return this.inbox.list(userId, query);
   }
 
   @Get('unread-count')
-  unreadCount(@CurrentUser('id') userId: number) {
+  unreadCount(@CurrentUser('id') userId: string) {
     return this.inbox.unreadCount(userId);
   }
 
   @Put('read-all')
-  markAllRead(@CurrentUser('id') userId: number) {
+  markAllRead(@CurrentUser('id') userId: string) {
     return this.inbox.markAllRead(userId);
   }
 
   @Put(':id/read')
-  markRead(@CurrentUser('id') userId: number, @Param('id') id: string) {
-    return this.inbox.markRead(userId, +id);
+  markRead(@CurrentUser('id') userId: string, @Param('id') id: string) {
+    return this.inbox.markRead(userId, id);
   }
 }

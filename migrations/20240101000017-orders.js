@@ -13,7 +13,7 @@ module.exports = {
     // cancelling an order can find and remove the exact mirror row without
     // touching unrelated expenses.
     await queryInterface.addColumn('expenses', 'product_sale_id', {
-      type: Sequelize.INTEGER,
+      type: Sequelize.UUID,
       allowNull: true,
       references: { model: 'product_sales', key: 'id' },
       onDelete: 'SET NULL',

@@ -13,7 +13,7 @@ export class AdminNotificationsService {
     private readonly notificationService: NotificationService,
   ) {}
 
-  async broadcast(shopId: number, body: any) {
+  async broadcast(shopId: string, body: any) {
     const { title, message } = body;
     if (!title || !message) throw new AppError('Title and message required', 400);
 

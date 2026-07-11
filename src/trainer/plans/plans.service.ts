@@ -15,7 +15,7 @@ export class TrainerPlansService {
     @InjectModel(DietMeal) private readonly dietMeal: typeof DietMeal,
   ) {}
 
-  private async verifyAssignment(trainerId: number, memberId: number) {
+  private async verifyAssignment(trainerId: string, memberId: string) {
     const a = await this.trainerMember.findOne({
       where: { trainer_id: trainerId, member_id: memberId, is_active: true },
     });
@@ -24,7 +24,7 @@ export class TrainerPlansService {
 
   // ─── Workout Plans ───────────────────────────────────────────────────────────
 
-  async listWorkoutPlans(trainerId: number, memberId: number) {
+  async listWorkoutPlans(trainerId: string, memberId: string) {
     await this.verifyAssignment(trainerId, memberId);
     return this.workoutPlan.findAll({
       where: { member_id: memberId },
@@ -33,7 +33,7 @@ export class TrainerPlansService {
     });
   }
 
-  async createWorkoutPlan(trainerId: number, shopId: number, memberId: number, body: any) {
+  async createWorkoutPlan(trainerId: string, shopId: string, memberId: string, body: any) {
     await this.verifyAssignment(trainerId, memberId);
     const { title, description, goal, start_date, end_date } = body;
     if (!title) throw new AppError('Title required', 400);
@@ -46,7 +46,7 @@ export class TrainerPlansService {
     return new ApiPayload(plan, 'Workout plan created');
   }
 
-  async getWorkoutPlan(trainerId: number, memberId: number, planId: number) {
+  async getWorkoutPlan(trainerId: string, memberId: string, planId: string) {
     await this.verifyAssignment(trainerId, memberId);
     const plan = await this.workoutPlan.findOne({
       where: { id: planId, member_id: memberId },
@@ -59,7 +59,7 @@ export class TrainerPlansService {
     return plan;
   }
 
-  async updateWorkoutPlan(trainerId: number, memberId: number, planId: number, body: any) {
+  async updateWorkoutPlan(trainerId: string, memberId: string, planId: string, body: any) {
     await this.verifyAssignment(trainerId, memberId);
     const plan: any = await this.workoutPlan.findOne({ where: { id: planId, member_id: memberId } });
     if (!plan) throw new AppError('Plan not found', 404);
@@ -67,7 +67,7 @@ export class TrainerPlansService {
     return new ApiPayload(plan, 'Updated');
   }
 
-  async deleteWorkoutPlan(trainerId: number, memberId: number, planId: number) {
+  async deleteWorkoutPlan(trainerId: string, memberId: string, planId: string) {
     await this.verifyAssignment(trainerId, memberId);
     const plan: any = await this.workoutPlan.findOne({ where: { id: planId, member_id: memberId } });
     if (!plan) throw new AppError('Plan not found', 404);
@@ -75,14 +75,14 @@ export class TrainerPlansService {
     return new ApiPayload(null, 'Deleted');
   }
 
-  async addWorkoutDay(trainerId: number, memberId: number, planId: number, body: any) {
+  async addWorkoutDay(trainerId: string, memberId: string, planId: string, body: any) {
     await this.verifyAssignment(trainerId, memberId);
     const { day_of_week, notes } = body;
     const day = await this.workoutDay.create({ workout_plan_id: planId, day_of_week, notes } as any);
     return new ApiPayload(day, 'Day added');
   }
 
-  async updateWorkoutDay(trainerId: number, memberId: number, dayId: number, body: any) {
+  async updateWorkoutDay(trainerId: string, memberId: string, dayId: string, body: any) {
     await this.verifyAssignment(trainerId, memberId);
     const day: any = await this.workoutDay.findByPk(dayId);
     if (!day) throw new AppError('Day not found', 404);
@@ -90,7 +90,7 @@ export class TrainerPlansService {
     return new ApiPayload(day, 'Day updated');
   }
 
-  async deleteWorkoutDay(trainerId: number, memberId: number, dayId: number) {
+  async deleteWorkoutDay(trainerId: string, memberId: string, dayId: string) {
     await this.verifyAssignment(trainerId, memberId);
     const day: any = await this.workoutDay.findByPk(dayId);
     if (!day) throw new AppError('Day not found', 404);
@@ -98,7 +98,7 @@ export class TrainerPlansService {
     return new ApiPayload(null, 'Day deleted');
   }
 
-  async addExercise(trainerId: number, memberId: number, dayId: number, body: any) {
+  async addExercise(trainerId: string, memberId: string, dayId: string, body: any) {
     await this.verifyAssignment(trainerId, memberId);
     const { name, sets, reps, duration_secs, rest_secs, notes, order_index } = body;
     const ex = await this.workoutExercise.create({
@@ -112,7 +112,7 @@ export class TrainerPlansService {
     return new ApiPayload(ex, 'Exercise added');
   }
 
-  async updateExercise(trainerId: number, memberId: number, exId: number, body: any) {
+  async updateExercise(trainerId: string, memberId: string, exId: string, body: any) {
     await this.verifyAssignment(trainerId, memberId);
     const ex: any = await this.workoutExercise.findByPk(exId);
     if (!ex) throw new AppError('Exercise not found', 404);
@@ -120,7 +120,7 @@ export class TrainerPlansService {
     return new ApiPayload(ex, 'Exercise updated');
   }
 
-  async deleteExercise(trainerId: number, memberId: number, exId: number) {
+  async deleteExercise(trainerId: string, memberId: string, exId: string) {
     await this.verifyAssignment(trainerId, memberId);
     const ex: any = await this.workoutExercise.findByPk(exId);
     if (!ex) throw new AppError('Exercise not found', 404);
@@ -130,7 +130,7 @@ export class TrainerPlansService {
 
   // ─── Diet Plans ──────────────────────────────────────────────────────────────
 
-  async listDietPlans(trainerId: number, memberId: number) {
+  async listDietPlans(trainerId: string, memberId: string) {
     await this.verifyAssignment(trainerId, memberId);
     return this.dietPlan.findAll({
       where: { member_id: memberId },
@@ -139,7 +139,7 @@ export class TrainerPlansService {
     });
   }
 
-  async createDietPlan(trainerId: number, shopId: number, memberId: number, body: any) {
+  async createDietPlan(trainerId: string, shopId: string, memberId: string, body: any) {
     await this.verifyAssignment(trainerId, memberId);
     const { title, description, daily_calories, protein_grams, carbs_grams, fat_grams } = body;
     if (!title) throw new AppError('Title required', 400);
@@ -155,7 +155,7 @@ export class TrainerPlansService {
     return new ApiPayload(plan, 'Diet plan created');
   }
 
-  async getDietPlan(trainerId: number, memberId: number, planId: number) {
+  async getDietPlan(trainerId: string, memberId: string, planId: string) {
     await this.verifyAssignment(trainerId, memberId);
     const plan = await this.dietPlan.findOne({
       where: { id: planId, member_id: memberId },
@@ -165,7 +165,7 @@ export class TrainerPlansService {
     return plan;
   }
 
-  async updateDietPlan(trainerId: number, memberId: number, planId: number, body: any) {
+  async updateDietPlan(trainerId: string, memberId: string, planId: string, body: any) {
     await this.verifyAssignment(trainerId, memberId);
     const plan: any = await this.dietPlan.findOne({ where: { id: planId, member_id: memberId } });
     if (!plan) throw new AppError('Plan not found', 404);
@@ -173,7 +173,7 @@ export class TrainerPlansService {
     return new ApiPayload(plan, 'Updated');
   }
 
-  async deleteDietPlan(trainerId: number, memberId: number, planId: number) {
+  async deleteDietPlan(trainerId: string, memberId: string, planId: string) {
     await this.verifyAssignment(trainerId, memberId);
     const plan: any = await this.dietPlan.findOne({ where: { id: planId, member_id: memberId } });
     if (!plan) throw new AppError('Plan not found', 404);
@@ -181,7 +181,7 @@ export class TrainerPlansService {
     return new ApiPayload(null, 'Deleted');
   }
 
-  async addMeal(trainerId: number, memberId: number, planId: number, body: any) {
+  async addMeal(trainerId: string, memberId: string, planId: string, body: any) {
     await this.verifyAssignment(trainerId, memberId);
     const { meal_name, meal_time, foods, calories, order_index } = body;
     const meal = await this.dietMeal.create({
@@ -192,7 +192,7 @@ export class TrainerPlansService {
     return new ApiPayload(meal, 'Meal added');
   }
 
-  async updateMeal(trainerId: number, memberId: number, mealId: number, body: any) {
+  async updateMeal(trainerId: string, memberId: string, mealId: string, body: any) {
     await this.verifyAssignment(trainerId, memberId);
     const meal: any = await this.dietMeal.findByPk(mealId);
     if (!meal) throw new AppError('Meal not found', 404);
@@ -200,7 +200,7 @@ export class TrainerPlansService {
     return new ApiPayload(meal, 'Meal updated');
   }
 
-  async deleteMeal(trainerId: number, memberId: number, mealId: number) {
+  async deleteMeal(trainerId: string, memberId: string, mealId: string) {
     await this.verifyAssignment(trainerId, memberId);
     const meal: any = await this.dietMeal.findByPk(mealId);
     if (!meal) throw new AppError('Meal not found', 404);

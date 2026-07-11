@@ -21,14 +21,14 @@ export class MemberSubscriptionService {
     private readonly notificationService: NotificationService,
   ) {}
 
-  async getPlans(shopId: number) {
+  async getPlans(shopId: string) {
     return this.subscriptionPlan.findAll({
       where: { shop_id: shopId, is_active: true },
       order: [['sell_price', 'ASC']],
     });
   }
 
-  async mySubscriptions(shopId: number, userId: number) {
+  async mySubscriptions(shopId: string, userId: string) {
     return this.subscription.findAll({
       where: { shop_id: shopId, member_id: userId },
       include: [{ model: SubscriptionPlan, as: 'plan' }],
@@ -36,7 +36,7 @@ export class MemberSubscriptionService {
     });
   }
 
-  async activeSubscription(shopId: number, userId: number) {
+  async activeSubscription(shopId: string, userId: string) {
     const sub: any = await this.subscription.findOne({
       where: { shop_id: shopId, member_id: userId, status: 'active' },
       include: [{ model: SubscriptionPlan, as: 'plan' }],
@@ -51,7 +51,7 @@ export class MemberSubscriptionService {
     return { ...sub.toJSON(), days_remaining: daysRemaining };
   }
 
-  async createOrder(shopId: number, userId: number, body: any) {
+  async createOrder(shopId: string, userId: string, body: any) {
     const { planId } = body;
     const plan: any = await this.subscriptionPlan.findOne({ where: { id: planId, shop_id: shopId } });
     if (!plan || !plan.is_active) throw new AppError('Plan not found or inactive', 404);
@@ -73,7 +73,7 @@ export class MemberSubscriptionService {
     };
   }
 
-  async purchase(shopId: number, userId: number, body: any) {
+  async purchase(shopId: string, userId: string, body: any) {
     const { planId, razorpayOrderId, razorpayPaymentId, razorpaySignature } = body;
 
     if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {

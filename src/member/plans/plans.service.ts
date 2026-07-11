@@ -10,7 +10,7 @@ export class MemberPlansService {
     @InjectModel(Payment) private readonly payment: typeof Payment,
   ) {}
 
-  async activeWorkoutPlan(userId: number) {
+  async activeWorkoutPlan(userId: string) {
     return this.workoutPlan.findOne({
       where: { member_id: userId, is_active: true },
       include: [{
@@ -21,7 +21,7 @@ export class MemberPlansService {
     });
   }
 
-  async activeDietPlan(userId: number) {
+  async activeDietPlan(userId: string) {
     return this.dietPlan.findOne({
       where: { member_id: userId, is_active: true },
       include: [{ model: DietMeal, as: 'meals', order: [['order_index', 'ASC']] }],
@@ -29,7 +29,7 @@ export class MemberPlansService {
     });
   }
 
-  async payments(userId: number) {
+  async payments(userId: string) {
     return this.payment.findAll({
       where: { member_id: userId },
       order: [['payment_date', 'DESC']],

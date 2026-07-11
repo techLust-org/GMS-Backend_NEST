@@ -13,23 +13,23 @@ export class MemberPlansController {
   constructor(private readonly memberPlansService: MemberPlansService) {}
 
   @Get()
-  list(@ShopId() shopId: number) {
+  list(@ShopId() shopId: string) {
     return this.memberPlansService.list(shopId);
   }
 
   @Post()
   @HttpCode(201)
-  create(@ShopId() shopId: number, @Body() body: any) {
+  create(@ShopId() shopId: string, @Body() body: any) {
     return this.memberPlansService.create(shopId, body);
   }
 
   @Put(':id')
-  update(@ShopId() shopId: number, @Param('id') id: string, @Body() body: any) {
-    return this.memberPlansService.update(shopId, +id, body);
+  update(@ShopId() shopId: string, @Param('id') id: string, @Body() body: any) {
+    return this.memberPlansService.update(shopId, id, body);
   }
 
   @Delete(':id')
-  remove(@ShopId() shopId: number, @Param('id') id: string) {
-    return this.memberPlansService.remove(shopId, +id);
+  remove(@ShopId() shopId: string, @Param('id') id: string) {
+    return this.memberPlansService.remove(shopId, id);
   }
 }

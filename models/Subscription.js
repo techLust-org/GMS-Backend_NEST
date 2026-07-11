@@ -2,10 +2,10 @@
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => sequelize.define('Subscription', {
-  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  shop_id: { type: DataTypes.INTEGER, allowNull: false },
-  member_id: { type: DataTypes.INTEGER, allowNull: false },
-  plan_id: { type: DataTypes.INTEGER, allowNull: false },
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+  shop_id: { type: DataTypes.UUID, allowNull: false },
+  member_id: { type: DataTypes.UUID, allowNull: false },
+  plan_id: { type: DataTypes.UUID, allowNull: false },
   start_date: { type: DataTypes.DATEONLY, allowNull: false },
   end_date: { type: DataTypes.DATEONLY, allowNull: false },
   status: { type: DataTypes.ENUM('active', 'expired', 'cancelled', 'pending'), defaultValue: 'active' },

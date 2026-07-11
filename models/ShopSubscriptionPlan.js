@@ -3,7 +3,7 @@ const { DataTypes } = require('sequelize');
 
 // Platform plans that WE sell to gym owners (shops).
 module.exports = (sequelize) => sequelize.define('ShopSubscriptionPlan', {
-  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
   name: { type: DataTypes.STRING(100), allowNull: false },
   plan_type: { type: DataTypes.ENUM('monthly', 'quarterly', 'yearly'), allowNull: false },
   duration_days: { type: DataTypes.INTEGER, allowNull: false },

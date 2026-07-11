@@ -1,3 +1,4 @@
+import './crypto-polyfill';
 import 'dotenv/config';
 import { NestFactory, Reflector } from '@nestjs/core';
 import helmet from 'helmet';

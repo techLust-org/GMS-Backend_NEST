@@ -1,14 +1,14 @@
-import { Table, Column, Model, DataType, PrimaryKey, AutoIncrement } from 'sequelize-typescript';
+import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
 
 @Table({ tableName: 'workout_exercises', underscored: true })
 export class WorkoutExercise extends Model {
   @PrimaryKey
-  @AutoIncrement
-  @Column(DataType.INTEGER)
-  id: number;
+  @Default(DataType.UUIDV4)
+  @Column(DataType.UUID)
+  id: string;
 
-  @Column({ type: DataType.INTEGER, allowNull: false })
-  workout_day_id: number;
+  @Column({ type: DataType.UUID, allowNull: false })
+  workout_day_id: string;
 
   @Column({ type: DataType.STRING(150), allowNull: false })
   name: string;

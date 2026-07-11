@@ -70,10 +70,10 @@ export class OrdersService {
     private readonly notificationService: NotificationService,
   ) {}
 
-  private loadOrderRows(shopId: number, orderKey: string, opts: any = {}) {
+  private loadOrderRows(shopId: string, orderKey: string, opts: any = {}) {
     const where: any = { shop_id: shopId };
     if (orderKey.startsWith('sale-')) {
-      where.id = parseInt(orderKey.slice(5), 10);
+      where.id = orderKey.slice(5);
     } else {
       where.order_id = orderKey;
     }
@@ -87,8 +87,8 @@ export class OrdersService {
     });
   }
 
-  async list(shopId: number, query: any) {
-    const { status } = query;
+  async list(shopId: string, query: any) {
+    const { status, page = 1, limit = 10 } = query;
     const sales: any[] = await this.productSale.findAll({
       where: { shop_id: shopId },
       include: [
@@ -99,10 +99,16 @@ export class OrdersService {
     });
     let groups = groupSales(sales);
     if (status) groups = groups.filter((g) => g.status === status);
-    return groups;
+
+    // Orders are groups of ProductSale rows sharing an order_id, so pagination
+    // is applied after grouping rather than at the SQL row level.
+    const total = groups.length;
+    const offset = (page - 1) * limit;
+    const rows = groups.slice(offset, offset + Number(limit));
+    return new ApiPayload(rows, 'Orders fetched', { total, page: +page, limit: +limit });
   }
 
-  async updateStatus(shopId: number, orderKey: string, body: any) {
+  async updateStatus(shopId: string, orderKey: string, body: any) {
     const t: any = await this.sequelize.transaction();
     try {
       const { status: nextStatus } = body;

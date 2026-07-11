@@ -9,7 +9,7 @@ import { QueryTypes } from 'sequelize';
 export class FinancialService {
   constructor(@InjectConnection() private readonly sequelize: Sequelize) {}
 
-  async getMonthlySummary(year: number | string, shopId: number) {
+  async getMonthlySummary(year: number | string, shopId: string) {
     const revenue = await this.sequelize.query(
       `
       SELECT
@@ -40,7 +40,7 @@ export class FinancialService {
     return { revenue, expenses };
   }
 
-  async getMonthlyBreakdown(year: number | string, shopId: number) {
+  async getMonthlyBreakdown(year: number | string, shopId: string) {
     const rows: any[] = await this.sequelize.query(
       `
       SELECT
@@ -62,11 +62,11 @@ export class FinancialService {
     }));
   }
 
-  async getAnnualSummary(year: number | string, shopId: number) {
+  async getAnnualSummary(year: number | string, shopId: string) {
     return this.getMonthlyBreakdown(year, shopId);
   }
 
-  async getDailyBreakdown(year: number | string, month: number | string, shopId: number) {
+  async getDailyBreakdown(year: number | string, month: number | string, shopId: string) {
     const rows: any[] = await this.sequelize.query(
       `
       SELECT
@@ -87,7 +87,7 @@ export class FinancialService {
     }));
   }
 
-  async getOverallSummary(year: number | string, month: number | string, shopId: number) {
+  async getOverallSummary(year: number | string, month: number | string, shopId: string) {
     const dateFilter = 'EXTRACT(YEAR FROM entry_date) = :year AND EXTRACT(MONTH FROM entry_date) = :month';
     const replacements = { year, month, shopId };
 

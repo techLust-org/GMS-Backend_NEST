@@ -4,7 +4,7 @@ import { Transaction } from 'sequelize';
 import { Ledger } from '../models';
 
 interface RecordArgs {
-  shopId: number | null;
+  shopId: string | null;
   type: 'credit' | 'debit';
   amount: number | string;
   reference: string;
@@ -14,7 +14,7 @@ interface RecordArgs {
 }
 
 interface RemoveArgs {
-  shopId: number;
+  shopId: string;
   reference: string;
   referenceId: number;
   transaction?: Transaction;
@@ -47,7 +47,7 @@ export class LedgerService {
     });
   }
 
-  async hasEntry({ shopId, reference, referenceId }: { shopId: number; reference: string; referenceId: number }) {
+  async hasEntry({ shopId, reference, referenceId }: { shopId: string; reference: string; referenceId: number }) {
     const count = await this.ledger.count({
       where: { shop_id: shopId, reference, reference_id: referenceId },
     });

@@ -13,13 +13,13 @@ export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
   @Get()
-  list(@ShopId() shopId: number, @Query() query: any) {
+  list(@ShopId() shopId: string, @Query() query: any) {
     return this.ordersService.list(shopId, query);
   }
 
   @Patch(':orderKey/status')
   @HttpCode(200)
-  updateStatus(@ShopId() shopId: number, @Param('orderKey') orderKey: string, @Body() body: any) {
+  updateStatus(@ShopId() shopId: string, @Param('orderKey') orderKey: string, @Body() body: any) {
     return this.ordersService.updateStatus(shopId, orderKey, body);
   }
 }
