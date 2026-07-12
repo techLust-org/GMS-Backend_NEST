@@ -20,6 +20,8 @@ module.exports = (sequelize) => sequelize.define('User', {
   specialization: { type: DataTypes.STRING(150) },
   bio: { type: DataTypes.TEXT },
   govt_id_url: { type: DataTypes.TEXT },
+  fcm_token: { type: DataTypes.TEXT },
+  google_id: { type: DataTypes.STRING },
 }, {
   tableName: 'users',
   underscored: true,

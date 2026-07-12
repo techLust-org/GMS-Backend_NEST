@@ -25,8 +25,8 @@ export class PlatformController {
 
   @Post('create-order')
   @HttpCode(200)
-  createOrder(@Body() body: any) {
-    return this.platformService.createOrder(body);
+  createOrder(@ShopId() shopId: string, @Body() body: any) {
+    return this.platformService.createOrder(shopId, body);
   }
 
   @Post('activate')

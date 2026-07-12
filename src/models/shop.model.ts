@@ -25,9 +25,15 @@ export class Shop extends Model {
   @Column(DataType.TEXT)
   logo_url: string;
 
+  @Column(DataType.TEXT)
+  cover_image_url: string;
+
   @Column(DataType.STRING(7))
   theme_color: string;
 
   @Column({ type: DataType.BOOLEAN, allowNull: false, defaultValue: false })
   is_active: boolean;
+
+  @Column({ type: DataType.BOOLEAN, allowNull: false, defaultValue: false })
+  is_closed: boolean;
 }

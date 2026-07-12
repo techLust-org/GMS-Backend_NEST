@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op } from 'sequelize';
-import { Notification } from '../models';
+import { Notification, User } from '../models';
+import { PushService } from './push.service';
 
 interface CreateNotificationArgs {
   userId: string;
@@ -17,7 +18,23 @@ const MAX_NOTIFICATIONS_PER_USER = 12;
 
 @Injectable()
 export class NotificationService {
-  constructor(@InjectModel(Notification) private readonly notification: typeof Notification) {}
+  constructor(
+    @InjectModel(Notification) private readonly notification: typeof Notification,
+    @InjectModel(User) private readonly user: typeof User,
+    private readonly push: PushService,
+  ) {}
+
+  // Best-effort FCM push alongside the in-app notification row — never lets
+  // a push failure affect the caller's request.
+  private async pushToUser(userId: string, title: string, message: string, type: string) {
+    const record: any = await this.user.findByPk(userId, { attributes: ['fcm_token'] });
+    const token = record?.fcm_token;
+    if (!token) return;
+    const { shouldClearToken } = await this.push.sendToToken(token, title, message, { type });
+    if (shouldClearToken) {
+      await this.user.update({ fcm_token: null }, { where: { id: userId } }).catch(() => {});
+    }
+  }
 
   // Keeps only the most recent MAX_NOTIFICATIONS_PER_USER rows for a user,
   // deleting anything older once that cap is exceeded.
@@ -52,6 +69,7 @@ export class NotificationService {
       related_id: relatedId,
     } as any);
     await this.pruneOldNotifications(userId);
+    this.pushToUser(userId, title, message, type).catch(() => {});
     return created;
   }
 
@@ -77,6 +95,7 @@ export class NotificationService {
     }));
     const created = await this.notification.bulkCreate(records as any);
     await Promise.all(userIds.map((userId) => this.pruneOldNotifications(userId)));
+    Promise.all(userIds.map((userId) => this.pushToUser(userId, title, message, type))).catch(() => {});
     return created;
   }
 }

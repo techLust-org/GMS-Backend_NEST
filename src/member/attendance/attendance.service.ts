@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op } from 'sequelize';
-import { Attendance, Subscription } from '../../models';
+import { Attendance, Subscription, Shop } from '../../models';
 import { AppError } from '../../common/app-error';
 import { ApiPayload } from '../../common/api-payload';
 
@@ -10,6 +10,7 @@ export class MemberAttendanceService {
   constructor(
     @InjectModel(Attendance) private readonly attendance: typeof Attendance,
     @InjectModel(Subscription) private readonly subscription: typeof Subscription,
+    @InjectModel(Shop) private readonly shop: typeof Shop,
   ) {}
 
   async history(shopId: string, userId: string, query: any) {
@@ -31,6 +32,9 @@ export class MemberAttendanceService {
   }
 
   async checkIn(shopId: string, userId: string) {
+    const shop: any = await this.shop.findByPk(shopId, { attributes: ['is_closed'] });
+    if (shop?.is_closed) throw new AppError('The gym is closed today. Check-in is unavailable.', 403);
+
     const activeSub = await this.subscription.findOne({
       where: { shop_id: shopId, member_id: userId, status: 'active' },
     });

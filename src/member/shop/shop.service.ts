@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel, InjectConnection } from '@nestjs/sequelize';
 import { Sequelize } from 'sequelize-typescript';
-import { Product, ProductSale, Payment, ExpenseCategory, Expense, User } from '../../models';
+import { Product, ProductSale, Payment, ExpenseCategory, Expense, User, PendingPayment } from '../../models';
 import { RazorpayService } from '../../shared/razorpay.service';
 import { LedgerService } from '../../shared/ledger.service';
 import { NotificationService } from '../../shared/notification.service';
@@ -27,6 +27,7 @@ export class MemberShopService {
     @InjectModel(ExpenseCategory) private readonly expenseCategory: typeof ExpenseCategory,
     @InjectModel(Expense) private readonly expense: typeof Expense,
     @InjectModel(User) private readonly user: typeof User,
+    @InjectModel(PendingPayment) private readonly pendingPayment: typeof PendingPayment,
     @InjectConnection() private readonly sequelize: Sequelize,
     private readonly razorpay: RazorpayService,
     private readonly ledger: LedgerService,
@@ -40,7 +41,7 @@ export class MemberShopService {
     return this.product.findAll({ where, order: [['name', 'ASC']] });
   }
 
-  async createOrder(shopId: string, body: any) {
+  async createOrder(shopId: string, userId: string, body: any) {
     const items = normalizeItems(body.items);
 
     let total = 0;
@@ -55,6 +56,21 @@ export class MemberShopService {
 
     const order = await this.razorpay.createOrder(total, 'INR');
 
+    // Remembers what this order was actually created for (exact cart +
+    // total) — purchase() must read the grant back from here, never trust
+    // client-resubmitted items/quantities at confirm time (a signature only
+    // proves *a* payment is genuine, not that it matches what's being
+    // confirmed — a client could otherwise pay for one cheap item and then
+    // "confirm" a completely different, expensive cart with the same proof).
+    await this.pendingPayment.create({
+      shop_id: shopId,
+      user_id: userId,
+      kind: 'shop_order',
+      razorpay_order_id: order.id,
+      amount: total,
+      payload: { items: items.map(({ productId, qty }) => ({ productId, qty })) },
+    } as any);
+
     return {
       orderId: order.id,
       amount: order.amount,
@@ -67,17 +83,65 @@ export class MemberShopService {
     };
   }
 
+  // Reconstructs the "Purchase successful" response shape from already-
+  // persisted sale rows — used by the idempotent-retry paths below so a
+  // repeated request for an already-processed order returns the same
+  // result instead of reprocessing (double-decrementing stock, double
+  // crediting the ledger, etc.).
+  private async existingPurchaseResult(shopId: string, razorpayOrderId: string) {
+    const sales: any[] = await this.productSale.findAll({
+      where: { shop_id: shopId, order_id: razorpayOrderId },
+      include: [{ model: Product, as: 'product', attributes: ['name'] }],
+    });
+    if (!sales.length) return null;
+    const total = sales.reduce((sum, s) => sum + parseFloat(s.total_price), 0);
+    return new ApiPayload({
+      orderId: razorpayOrderId,
+      status: sales[0].status,
+      total,
+      items: sales.map((s) => ({
+        id: s.id,
+        productName: s.product ? s.product.name : 'Product',
+        quantity: s.quantity,
+        unitPrice: s.unit_price,
+        totalPrice: s.total_price,
+      })),
+    }, 'Purchase successful');
+  }
+
   async purchase(shopId: string, userId: string, body: any) {
+    const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = body;
+    if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+      throw new AppError('Payment verification details missing', 400);
+    }
+    const valid = this.razorpay.verifySignature(razorpayOrderId, razorpayPaymentId, razorpaySignature);
+    if (!valid) throw new AppError('Payment verification failed', 400);
+
+    // Idempotency: a retried request for an order we've already processed
+    // (dropped response, double-tap, etc.) must return the same result,
+    // not decrement stock / credit the ledger a second time.
+    const already = await this.existingPurchaseResult(shopId, razorpayOrderId);
+    if (already) return already;
+
+    // The cart to fulfill comes from what createOrder() resolved and stored
+    // server-side for this exact order — not from the client body.
+    const pending: any = await this.pendingPayment.findOne({
+      where: {
+        razorpay_order_id: razorpayOrderId,
+        shop_id: shopId,
+        user_id: userId,
+        kind: 'shop_order',
+      },
+    });
+    if (!pending) throw new AppError('No matching order found for this payment', 400);
+    if (pending.consumed_at) throw new AppError('This payment has already been processed', 409);
+
+    // Already normalized (and server-generated) when createOrder() stored
+    // it — no need to re-validate client-shaped input here.
+    const items: { productId: string; qty: number }[] = pending.payload.items;
+
     const t: any = await this.sequelize.transaction();
     try {
-      const items = normalizeItems(body.items);
-      const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = body;
-      if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
-        throw new AppError('Payment verification details missing', 400);
-      }
-      const valid = this.razorpay.verifySignature(razorpayOrderId, razorpayPaymentId, razorpaySignature);
-      if (!valid) throw new AppError('Payment verification failed', 400);
-
       const saleDate = new Date().toISOString().split('T')[0];
       const lines: any[] = [];
       let total = 0;
@@ -151,6 +215,8 @@ export class MemberShopService {
         product_sale_id: anchorSaleId,
       } as any, { transaction: t });
 
+      await pending.update({ consumed_at: new Date() }, { transaction: t });
+
       await t.commit();
 
       try {
@@ -176,8 +242,14 @@ export class MemberShopService {
           unitPrice: sale.unit_price, totalPrice: sale.total_price,
         })),
       }, 'Purchase successful');
-    } catch (err) {
+    } catch (err: any) {
       if (!t.finished) await t.rollback();
+      // Lost a race to a concurrent request processing the same order —
+      // the unique constraint on (order_id, product_id) caught it.
+      if (err.name === 'SequelizeUniqueConstraintError') {
+        const existing = await this.existingPurchaseResult(shopId, razorpayOrderId);
+        if (existing) return existing;
+      }
       throw err;
     }
   }

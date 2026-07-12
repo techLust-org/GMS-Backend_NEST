@@ -8,7 +8,7 @@ import { Roles, CurrentUser } from '../../common/decorators';
 
 @Controller('member')
 @UseGuards(JwtAuthGuard, RolesGuard, TenantGuard, ActiveShopGuard)
-@Roles('member')
+@Roles('member', 'trainer')
 export class MemberPlansController {
   constructor(private readonly plansService: MemberPlansService) {}
 

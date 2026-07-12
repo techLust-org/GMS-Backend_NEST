@@ -42,6 +42,12 @@ export class S3Service {
     return `${shopId}/owner/profiles/logo_${randomUUID()}.${ext}`;
   }
 
+  buildShopCoverImageKey(shopId: string, contentType: string): string {
+    const ext = ALLOWED_IMAGE_TYPES[contentType];
+    if (!ext) throw new AppError('Unsupported image type. Use JPEG, PNG or WebP.', 400);
+    return `${shopId}/owner/profiles/cover_${randomUUID()}.${ext}`;
+  }
+
   async getUploadUrl(key: string, contentType: string): Promise<string> {
     const command = new PutObjectCommand({ Bucket: this.bucket, Key: key, ContentType: contentType });
     return getSignedUrl(this.client, command, { expiresIn: 300 });

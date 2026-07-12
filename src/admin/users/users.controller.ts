@@ -50,4 +50,9 @@ export class UsersController {
   notifyRenewal(@ShopId() shopId: string, @Param('id') id: string) {
     return this.usersService.notifyRenewal(shopId, id);
   }
+
+  @Put(':id/promote-to-trainer')
+  promoteToTrainer(@ShopId() shopId: string, @Param('id') id: string, @Body() body: any) {
+    return this.usersService.promoteToTrainer(shopId, id, body);
+  }
 }

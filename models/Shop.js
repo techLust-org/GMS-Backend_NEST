@@ -9,6 +9,8 @@ module.exports = (sequelize) => sequelize.define('Shop', {
   email: { type: DataTypes.STRING(255) },
   address: { type: DataTypes.TEXT },
   logo_url: { type: DataTypes.TEXT },
+  cover_image_url: { type: DataTypes.TEXT },
   theme_color: { type: DataTypes.STRING(7) },
   is_active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  is_closed: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
 }, { tableName: 'shops', underscored: true });

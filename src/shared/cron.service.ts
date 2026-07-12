@@ -28,13 +28,13 @@ export class CronService implements OnModuleInit {
       yesterday.setDate(yesterday.getDate() - 1);
       const yDate = yesterday.toISOString().split('T')[0];
 
-      // Auto-close check-ins from yesterday
+      // Auto-close check-ins from yesterday: anyone who forgot to check out
+      // gets checked out at midnight (end of the day they checked in on).
       const openSessions = await this.attendance.findAll({
         where: { check_out_time: null, attendance_date: yDate },
       });
+      const autoCheckout = new Date(`${yDate}T23:59:59`);
       for (const session of openSessions) {
-        const autoCheckout = new Date(session.check_in_time);
-        autoCheckout.setHours(autoCheckout.getHours() + 2);
         await session.update({ check_out_time: autoCheckout });
       }
 

@@ -20,6 +20,8 @@ import { Expense } from './expense.model';
 import { Ledger } from './ledger.model';
 import { Notification } from './notification.model';
 import { TrainerAbsence } from './trainer-absence.model';
+import { PendingPayment } from './pending-payment.model';
+import { OtpRequest } from './otp-request.model';
 
 export * from './role.model';
 export * from './user.model';
@@ -43,11 +45,13 @@ export * from './expense.model';
 export * from './ledger.model';
 export * from './notification.model';
 export * from './trainer-absence.model';
+export * from './pending-payment.model';
+export * from './otp-request.model';
 export { setupAssociations } from './associations';
 
 export const ALL_MODELS = [
   Role, User, Shop, ShopSubscriptionPlan, ShopSubscription, SubscriptionPlan,
   Subscription, Payment, Attendance, TrainerMember, WorkoutPlan, WorkoutDay,
   WorkoutExercise, DietPlan, DietMeal, Product, ProductSale, ExpenseCategory,
-  Expense, Ledger, Notification, TrainerAbsence,
+  Expense, Ledger, Notification, TrainerAbsence, PendingPayment, OtpRequest,
 ];

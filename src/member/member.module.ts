@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
 import {
   Subscription, SubscriptionPlan, Payment, ExpenseCategory, Expense, User,
-  Attendance, WorkoutPlan, DietPlan, Product, ProductSale,
+  Attendance, WorkoutPlan, DietPlan, Product, ProductSale, Shop, PendingPayment,
 } from '../models';
 import { MemberSubscriptionService } from './subscription/subscription.service';
 import { MemberSubscriptionController } from './subscription/subscription.controller';
@@ -18,7 +18,7 @@ import { MemberNotificationsController } from './notifications/notifications.con
   imports: [
     SequelizeModule.forFeature([
       Subscription, SubscriptionPlan, Payment, ExpenseCategory, Expense, User,
-      Attendance, WorkoutPlan, DietPlan, Product, ProductSale,
+      Attendance, WorkoutPlan, DietPlan, Product, ProductSale, Shop, PendingPayment,
     ]),
   ],
   controllers: [

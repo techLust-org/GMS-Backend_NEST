@@ -8,7 +8,7 @@ import { Roles, ShopId, CurrentUser, ResponseMessage } from '../../common/decora
 
 @Controller('member')
 @UseGuards(JwtAuthGuard, RolesGuard, TenantGuard, ActiveShopGuard)
-@Roles('member')
+@Roles('member', 'trainer')
 export class MemberSubscriptionController {
   constructor(private readonly subscriptionService: MemberSubscriptionService) {}
 

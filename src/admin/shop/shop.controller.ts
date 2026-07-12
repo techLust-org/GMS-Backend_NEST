@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Post, Delete, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Put, Patch, Post, Delete, Body, UseGuards } from '@nestjs/common';
 import { AdminShopService } from './shop.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -35,5 +35,25 @@ export class AdminShopController {
   @Delete('logo')
   removeLogo(@ShopId() shopId: string) {
     return this.shopService.removeLogo(shopId);
+  }
+
+  @Post('cover/presign')
+  presignCover(@ShopId() shopId: string, @Body() body: any) {
+    return this.shopService.presignCover(shopId, body);
+  }
+
+  @Put('cover')
+  updateCover(@ShopId() shopId: string, @Body() body: any) {
+    return this.shopService.updateCover(shopId, body);
+  }
+
+  @Delete('cover')
+  removeCover(@ShopId() shopId: string) {
+    return this.shopService.removeCover(shopId);
+  }
+
+  @Patch('closed')
+  setClosed(@ShopId() shopId: string, @Body() body: any) {
+    return this.shopService.setClosed(shopId, body);
   }
 }

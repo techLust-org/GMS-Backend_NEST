@@ -8,7 +8,7 @@ import { Roles, ShopId, CurrentUser } from '../../common/decorators';
 
 @Controller('member/shop')
 @UseGuards(JwtAuthGuard, RolesGuard, TenantGuard, ActiveShopGuard)
-@Roles('member')
+@Roles('member', 'trainer')
 export class MemberShopController {
   constructor(private readonly shopService: MemberShopService) {}
 
@@ -19,8 +19,8 @@ export class MemberShopController {
 
   @Post('create-order')
   @HttpCode(200)
-  createOrder(@ShopId() shopId: string, @Body() body: any) {
-    return this.shopService.createOrder(shopId, body);
+  createOrder(@ShopId() shopId: string, @CurrentUser('id') userId: string, @Body() body: any) {
+    return this.shopService.createOrder(shopId, userId, body);
   }
 
   @Post('purchase')

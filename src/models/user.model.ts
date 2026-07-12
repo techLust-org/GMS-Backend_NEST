@@ -61,4 +61,10 @@ export class User extends Model {
 
   @Column(DataType.TEXT)
   govt_id_url: string;
+
+  @Column(DataType.TEXT)
+  fcm_token: string;
+
+  @Column(DataType.STRING)
+  google_id: string;
 }

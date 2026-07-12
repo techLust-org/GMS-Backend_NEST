@@ -149,6 +149,41 @@ export class UsersService {
     return new ApiPayload(null, `User ${status}`);
   }
 
+  // Trainers are also members — the only way to become one is an existing
+  // member being promoted by the owner, never a standalone signup.
+  async promoteToTrainer(shopId: string, id: string, body: any) {
+    const user: any = await this.user.findOne({
+      where: { id, shop_id: shopId },
+      include: [{ model: Role, attributes: ['name'] }],
+    });
+    if (!user) throw new AppError('User not found', 404);
+    if (user.Role.name !== 'member') {
+      throw new AppError('Only members can be promoted to trainer', 400);
+    }
+
+    const trainerRole: any = await this.role.findOne({ where: { name: 'trainer' } });
+    if (!trainerRole) throw new AppError('Trainer role not configured', 500);
+
+    const { specialization, salary, hireDate } = body;
+    await user.update({
+      role_id: trainerRole.id,
+      specialization: specialization !== undefined ? specialization : user.specialization,
+      salary: salary !== undefined ? salary : user.salary,
+      hire_date: hireDate !== undefined ? hireDate : user.hire_date,
+    });
+
+    await this.notificationService.createNotification({
+      userId: user.id,
+      shopId,
+      type: 'role_promotion',
+      title: 'You are now a trainer!',
+      message: 'The gym owner has promoted you to trainer. You still have full access to all member features.',
+    });
+
+    const result = await this.user.findByPk(user.id, { include: [{ model: Role, attributes: ['name'] }] });
+    return new ApiPayload(result, 'Member promoted to trainer');
+  }
+
   async notifyRenewal(shopId: string, id: string) {
     const user: any = await this.user.findOne({ where: { id, shop_id: shopId } });
     if (!user) throw new AppError('User not found', 404);

@@ -8,7 +8,7 @@ import { Roles, CurrentUser } from '../../common/decorators';
 
 @Controller('member/notifications')
 @UseGuards(JwtAuthGuard, RolesGuard, TenantGuard, ActiveShopGuard)
-@Roles('member')
+@Roles('member', 'trainer')
 export class MemberNotificationsController {
   constructor(private readonly inbox: NotificationsInboxService) {}
 
