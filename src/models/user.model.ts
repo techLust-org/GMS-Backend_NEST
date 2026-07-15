@@ -67,4 +67,10 @@ export class User extends Model {
 
   @Column(DataType.STRING)
   google_id: string;
+
+  // Set when the account owner self-deletes via /auth/delete-account.
+  // Personal fields get anonymized at the same time — this timestamp is
+  // just the audit marker of when that happened.
+  @Column(DataType.DATE)
+  deleted_at: Date;
 }

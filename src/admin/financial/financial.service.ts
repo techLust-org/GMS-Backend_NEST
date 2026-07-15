@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op } from 'sequelize';
+import { Response } from 'express';
+import { stringify } from 'csv-stringify';
+import PDFDocument from 'pdfkit';
 import { Expense, ExpenseCategory, User } from '../../models';
 import { FinancialService as FinancialReportService } from '../../shared/financial.service';
 import { LedgerService } from '../../shared/ledger.service';
@@ -59,6 +62,113 @@ export class AdminFinancialService {
       offset: parseInt(String(offset), 10),
     });
     return new ApiPayload(rows, 'Expenses fetched', { total: count, page: +page, limit: +limit });
+  }
+
+  async exportExpenses(shopId: string, query: any, res: Response) {
+    const { startDate, endDate, categoryId, format = 'csv' } = query;
+    if (!startDate || !endDate) throw new AppError('startDate and endDate are required', 400);
+
+    const where: any = {
+      shop_id: shopId,
+      expense_date: { [Op.between]: [startDate, endDate] },
+    };
+    if (categoryId) where.category_id = categoryId;
+
+    const rows: any[] = await this.expense.findAll({
+      where,
+      include: [{ model: ExpenseCategory, as: 'category', attributes: ['id', 'name', 'type'] }],
+      order: [['expense_date', 'ASC'], ['created_at', 'ASC']],
+    });
+
+    const filename = `ledger_${startDate}_to_${endDate}`;
+    if (format === 'pdf') {
+      this.writeLedgerPdf(rows, startDate, endDate, filename, res);
+    } else {
+      this.writeLedgerCsv(rows, filename, res);
+    }
+  }
+
+  private writeLedgerCsv(rows: any[], filename: string, res: Response) {
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
+
+    const stringifier = stringify({
+      header: true,
+      columns: ['Date', 'Category', 'Type', 'Description', 'Paid To', 'Amount'],
+    });
+    stringifier.pipe(res);
+    for (const r of rows) {
+      stringifier.write([
+        r.expense_date,
+        r.category?.name ?? '',
+        r.category?.type ?? '',
+        r.description ?? '',
+        r.paid_to ?? '',
+        Number(r.amount).toFixed(2),
+      ]);
+    }
+    stringifier.end();
+  }
+
+  private writeLedgerPdf(rows: any[], startDate: string, endDate: string, filename: string, res: Response) {
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}.pdf"`);
+
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    doc.pipe(res);
+
+    doc.fontSize(16).font('Helvetica-Bold').text('Ledger Export', { align: 'center' });
+    doc.fontSize(10).font('Helvetica').fillColor('#555').text(`${startDate} to ${endDate}`, { align: 'center' });
+    doc.moveDown(1.5);
+
+    const cols = [
+      { label: 'Date', x: 40, width: 65 },
+      { label: 'Category', x: 105, width: 90 },
+      { label: 'Description', x: 195, width: 165 },
+      { label: 'Paid To', x: 360, width: 100 },
+      { label: 'Amount', x: 460, width: 95 },
+    ];
+    const drawHeader = () => {
+      doc.font('Helvetica-Bold').fontSize(9).fillColor('#000');
+      for (const c of cols) doc.text(c.label, c.x, doc.y, { width: c.width, continued: false });
+      doc.moveDown(0.3);
+      doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor('#ccc').stroke();
+      doc.moveDown(0.3);
+      doc.font('Helvetica').fontSize(9).fillColor('#000');
+    };
+
+    drawHeader();
+    let totalCredit = 0;
+    let totalDebit = 0;
+    for (const r of rows) {
+      if (doc.y > 760) {
+        doc.addPage();
+        drawHeader();
+      }
+      const isCredit = r.category?.type === 'credit';
+      const amount = Number(r.amount);
+      if (isCredit) totalCredit += amount; else totalDebit += amount;
+
+      const rowY = doc.y;
+      doc.text(r.expense_date ?? '', cols[0].x, rowY, { width: cols[0].width });
+      doc.text(r.category?.name ?? '', cols[1].x, rowY, { width: cols[1].width });
+      doc.text(r.description ?? '', cols[2].x, rowY, { width: cols[2].width });
+      doc.text(r.paid_to ?? '', cols[3].x, rowY, { width: cols[3].width });
+      doc.fillColor(isCredit ? '#1a8a3d' : '#c62828')
+        .text(`${isCredit ? '+' : '-'}${amount.toFixed(2)}`, cols[4].x, rowY, { width: cols[4].width });
+      doc.fillColor('#000');
+      doc.moveDown(0.6);
+    }
+
+    doc.moveDown(1);
+    doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor('#ccc').stroke();
+    doc.moveDown(0.5);
+    doc.font('Helvetica-Bold').fontSize(10);
+    doc.text(`Total Credit: ${totalCredit.toFixed(2)}`, 360, doc.y, { width: 195 });
+    doc.text(`Total Debit: ${totalDebit.toFixed(2)}`, 360, doc.y, { width: 195 });
+    doc.text(`Net: ${(totalCredit - totalDebit).toFixed(2)}`, 360, doc.y, { width: 195 });
+
+    doc.end();
   }
 
   async createExpense(shopId: string, body: any) {
