@@ -410,6 +410,78 @@ export class AuthService {
     }
   }
 
+  // Self-service deletion, proven by email+password (same as login) rather
+  // than a JWT — matches Play Store's account-deletion requirement, which
+  // must work as a standalone flow, not just from inside a logged-in app.
+  //
+  // We anonymize instead of hard-deleting: attendance, subscriptions,
+  // orders, ledger entries, and workout/diet plans all reference this user,
+  // and other people's records (a trainer's assigned workouts, a shop's
+  // financial history) shouldn't disappear because one account deleted
+  // itself. Scrubbing PII and disabling login satisfies "delete my account"
+  // without breaking foreign keys or anyone else's data. If the account
+  // owns a shop, that shop is deactivated too so members/trainers can no
+  // longer use it.
+  async deleteAccount(body: any) {
+    const { email, password } = body;
+    if (!email || !password) throw new AppError('Email and password required', 400);
+
+    const user: any = await this.user.scope('withPassword').findOne({
+      where: { email },
+      include: [{ model: Role, attributes: ['name'] }],
+    });
+
+    if (!user || user.deleted_at) throw new AppError('Invalid credentials', 401);
+
+    const valid = await this.auth.compare(password, user.password_hash);
+    if (!valid) throw new AppError('Invalid credentials', 401);
+
+    const t = await this.sequelize.transaction();
+    try {
+      const oldProfilePic = user.profile_pic;
+      const oldGovtIdUrl = user.govt_id_url;
+
+      await user.update(
+        {
+          first_name: 'Deleted',
+          last_name: 'User',
+          email: `deleted-${user.id}@deleted.gymaxis.app`,
+          password_hash: await this.unusablePasswordHash(),
+          phone: null,
+          date_of_birth: null,
+          gender: null,
+          profile_pic: null,
+          emergency_contact: null,
+          specialization: null,
+          bio: null,
+          govt_id_url: null,
+          fcm_token: null,
+          google_id: null,
+          status: 'inactive',
+          deleted_at: new Date(),
+        },
+        { transaction: t },
+      );
+
+      if (user.Role.name === 'admin') {
+        await this.shop.update(
+          { is_active: false },
+          { where: { owner_id: user.id }, transaction: t },
+        );
+      }
+
+      await t.commit();
+
+      if (oldProfilePic) this.s3.deleteObject(oldProfilePic).catch(() => {});
+      if (oldGovtIdUrl) this.s3.deleteObject(oldGovtIdUrl).catch(() => {});
+
+      return new ApiPayload(null, 'Account deleted');
+    } catch (err) {
+      await t.rollback();
+      throw err;
+    }
+  }
+
   async me(userId: string) {
     const user: any = await this.user.findByPk(userId, {
       include: [{ model: Role, attributes: ['name'] }],

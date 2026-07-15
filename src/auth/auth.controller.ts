@@ -61,6 +61,15 @@ export class AuthController {
     return this.authService.registerOwnerWithWhatsApp(body);
   }
 
+  // Body: { email, password } — public, no JWT required; the password IS
+  // the authentication (same as login), so this works as a standalone
+  // account-deletion flow.
+  @Post('delete-account')
+  @HttpCode(200)
+  deleteAccount(@Body() body: any) {
+    return this.authService.deleteAccount(body);
+  }
+
   @Get('me')
   @UseGuards(JwtAuthGuard)
   me(@CurrentUser('id') userId: string) {
