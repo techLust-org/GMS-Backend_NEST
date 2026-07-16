@@ -34,6 +34,14 @@ import { HealthController } from './health.controller';
       rootPath: join(__dirname, '..', 'public', 'superadmin'),
       serveRoot: '/superadmin',
     }),
+    // Public account-deletion page required by Play Store data-safety policy —
+    // must be a browsable page (not the raw POST /api/v1/auth/delete-account
+    // API), reachable without the app or a login. Calls the same endpoint via
+    // fetch() client-side.
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'public', 'account-deletion'),
+      serveRoot: '/account-deletion',
+    }),
     CommonModule,
     SharedModule,
     PublicModule,
