@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Delete Your GYMAXIS Account</title>
+<style>
+  :root {
+    --bg: #0B0B0B; --surface1: #161616; --surface2: #1C1C1C; --surface3: #232323;
+    --border: rgba(255,255,255,.08); --text: #FFFFFF; --muted: #B5B5B5; --muted2: #777777;
+    --lime: #D7FF45; --on-lime: #0B0B0B; --danger: #FF5555; --success: #A8FF3A;
+    --radius: 18px; --radius-lg: 24px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 15px; line-height: 1.55; padding: 32px 16px 64px;
+  }
+  .wrap { max-width: 520px; margin: 0 auto; }
+  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
+  .brand .dot {
+    width: 34px; height: 34px; border-radius: 10px; background: var(--lime);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 16px; color: var(--on-lime); flex-shrink: 0;
+  }
+  .brand .name { font-weight: 700; font-size: 15px; letter-spacing: 2px; color: var(--text); }
+  h1 { font-size: 22px; font-weight: 700; margin: 0 0 8px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 0 0 24px; font-size: 14px; }
+  .card {
+    background: var(--surface1); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); padding: 22px; margin-bottom: 16px;
+  }
+  .card h2 { font-size: 15px; font-weight: 600; margin: 0 0 10px; }
+  .card p, .card li { color: var(--muted); font-size: 13.5px; margin: 0 0 6px; }
+  .card ul { margin: 8px 0 0; padding-left: 18px; }
+  .card li { margin-bottom: 4px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; font-weight: 500; }
+  .field input {
+    width: 100%; padding: 13px 14px; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 12px; color: var(--text); font-size: 14px; font-family: inherit;
+  }
+  .field input:focus { outline: none; border-color: var(--lime); }
+  .field input::placeholder { color: var(--muted2); }
+  .warn {
+    display: flex; gap: 10px; align-items: flex-start; background: rgba(255,85,85,.1);
+    border: 1px solid rgba(255,85,85,.25); border-radius: 12px; padding: 12px 14px; margin-bottom: 18px;
+  }
+  .warn .icon { color: var(--danger); font-weight: 700; font-size: 15px; line-height: 1.4; }
+  .warn p { color: #ffb3b3; font-size: 13px; margin: 0; }
+  button {
+    width: 100%; padding: 15px 16px; border: none; border-radius: 999px; font-weight: 700;
+    font-size: 14.5px; font-family: inherit; cursor: pointer; background: var(--danger); color: #fff;
+    transition: opacity .15s;
+  }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+  button:not(:disabled):active { opacity: .85; }
+  .msg { margin-top: 16px; padding: 14px 16px; border-radius: 12px; font-size: 13.5px; display: none; }
+  .msg.show { display: block; }
+  .msg.ok { background: rgba(168,255,58,.1); border: 1px solid rgba(168,255,58,.3); color: var(--success); }
+  .msg.err { background: rgba(255,85,85,.1); border: 1px solid rgba(255,85,85,.3); color: #ffb3b3; }
+  footer { text-align: center; color: var(--muted2); font-size: 12px; margin-top: 32px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <div class="dot">G</div>
+    <div class="name">GYMAXIS</div>
+  </div>
+
+  <h1>Delete Your Account</h1>
+  <p class="sub">
+    Request permanent removal of your personal data from GYMAXIS. This works whether
+    or not you still have the app installed.
+  </p>
+
+  <div class="card">
+    <h2>What happens when you delete your account</h2>
+    <p>Your personal information is immediately and permanently removed:</p>
+    <ul>
+      <li>Name, email, phone number, date of birth, gender</li>
+      <li>Profile photo and government ID document</li>
+      <li>Emergency contact and bio/specialization details</li>
+      <li>Saved login credentials — you will no longer be able to sign in</li>
+    </ul>
+    <p style="margin-top:12px">
+      Records that other people depend on — such as your gym's attendance history,
+      payment/ledger entries, and workout or diet plans tied to a trainer or gym —
+      are retained in anonymized form for the gym's accounting and other members'
+      continuity. If you own a gym, your gym is deactivated and its
+      members/trainers will no longer be able to use it.
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>Confirm your identity</h2>
+    <p style="margin-bottom:16px">Enter the email and password of the account you want to delete.</p>
+
+    <form id="delete-form">
+      <div class="field">
+        <label for="email">Email</label>
+        <input id="email" type="email" placeholder="you@example.com" autocomplete="email" required />
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" type="password" placeholder="Your account password" autocomplete="current-password" required />
+      </div>
+
+      <div class="warn">
+        <span class="icon">!</span>
+        <p>This action is permanent and cannot be undone.</p>
+      </div>
+
+      <button type="submit" id="submit-btn">Delete My Account</button>
+    </form>
+
+    <div id="result" class="msg"></div>
+  </div>
+
+  <footer>gymaxis.rowmio.in &middot; Data deletion requests are processed immediately</footer>
+</div>
+
+<script>
+  var form = document.getElementById('delete-form');
+  var btn = document.getElementById('submit-btn');
+  var result = document.getElementById('result');
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var email = document.getElementById('email').value.trim();
+    var password = document.getElementById('password').value;
+
+    if (!email || !password) return;
+
+    if (!window.confirm('This will permanently delete your GYMAXIS account. Continue?')) {
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Deleting…';
+    result.className = 'msg';
+
+    fetch('/api/v1/auth/delete-account', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email, password: password }),
+    })
+      .then(function (res) {
+        return res.json().then(function (body) { return { ok: res.ok, body: body }; });
+      })
+      .then(function (r) {
+        if (r.ok) {
+          result.textContent = 'Your account has been deleted.';
+          result.className = 'msg show ok';
+          form.reset();
+          btn.textContent = 'Account Deleted';
+        } else {
+          throw new Error((r.body && r.body.message) || 'Could not delete account.');
+        }
+      })
+      .catch(function (err) {
+        result.textContent = err.message || 'Something went wrong. Please try again.';
+        result.className = 'msg show err';
+        btn.disabled = false;
+        btn.textContent = 'Delete My Account';
+      });
+  });
+</script>
+</body>
+</html>
