@@ -35,4 +35,15 @@ export class PlatformController {
   activate(@ShopId() shopId: string, @Body() body: any) {
     return this.platformService.activate(shopId, body);
   }
+
+  @Get('referral')
+  getReferral(@ShopId() shopId: string) {
+    return this.platformService.getReferralInfo(shopId);
+  }
+
+  @Post('referral/redeem')
+  @HttpCode(200)
+  redeemReferral(@ShopId() shopId: string) {
+    return this.platformService.redeemReferralReward(shopId);
+  }
 }

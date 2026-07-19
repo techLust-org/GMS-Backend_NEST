@@ -36,4 +36,10 @@ export class Shop extends Model {
 
   @Column({ type: DataType.BOOLEAN, allowNull: false, defaultValue: false })
   is_closed: boolean;
+
+  @Column(DataType.STRING(12))
+  referral_code: string;
+
+  @Column(DataType.UUID)
+  referred_by_shop_id: string;
 }

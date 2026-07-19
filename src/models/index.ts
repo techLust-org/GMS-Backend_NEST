@@ -22,6 +22,7 @@ import { Notification } from './notification.model';
 import { TrainerAbsence } from './trainer-absence.model';
 import { PendingPayment } from './pending-payment.model';
 import { OtpRequest } from './otp-request.model';
+import { Referral } from './referral.model';
 
 export * from './role.model';
 export * from './user.model';
@@ -47,6 +48,7 @@ export * from './notification.model';
 export * from './trainer-absence.model';
 export * from './pending-payment.model';
 export * from './otp-request.model';
+export * from './referral.model';
 export { setupAssociations } from './associations';
 
 export const ALL_MODELS = [
@@ -54,4 +56,5 @@ export const ALL_MODELS = [
   Subscription, Payment, Attendance, TrainerMember, WorkoutPlan, WorkoutDay,
   WorkoutExercise, DietPlan, DietMeal, Product, ProductSale, ExpenseCategory,
   Expense, Ledger, Notification, TrainerAbsence, PendingPayment, OtpRequest,
+  Referral,
 ];

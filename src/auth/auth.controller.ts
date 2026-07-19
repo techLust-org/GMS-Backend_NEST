@@ -16,6 +16,7 @@ export class AuthController {
     return this.authService.login(body);
   }
 
+  // Body: { firstName, lastName, email, password, shopName, shopPhone?, shopEmail?, referralCode? }
   @Post('register-owner')
   @HttpCode(201)
   registerOwner(@Body() body: any) {
@@ -31,7 +32,7 @@ export class AuthController {
     return this.authService.loginWithGoogle(profile);
   }
 
-  // Body: { id_token, shopName, shopPhone?, shopEmail? }
+  // Body: { id_token, shopName, shopPhone?, shopEmail?, referralCode? }
   @Post('register-owner-google')
   @HttpCode(201)
   @UseGuards(AuthGuard('google-id-token'))
@@ -54,7 +55,7 @@ export class AuthController {
     return this.authService.loginWithWhatsApp(body);
   }
 
-  // Body: { phone, code, shopName, shopPhone?, shopEmail? }
+  // Body: { phone, code, shopName, shopPhone?, shopEmail?, referralCode? }
   @Post('register-owner-whatsapp')
   @HttpCode(201)
   registerOwnerWithWhatsApp(@Body() body: any) {
