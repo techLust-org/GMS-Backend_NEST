@@ -561,7 +561,7 @@ export class AuthService {
     const { contentType } = body;
     if (!contentType) throw new AppError('contentType required', 400);
 
-    const key = this.s3.buildProfilePictureKey(shopId, role, contentType);
+    const key = this.s3.buildProfilePictureKey(shopId, userId, role, contentType);
     const uploadUrl = await this.s3.getUploadUrl(key, contentType);
     return new ApiPayload({ uploadUrl, key }, 'Upload URL generated');
   }
@@ -570,7 +570,7 @@ export class AuthService {
   async updateProfilePicture(userId: string, shopId: string | null, role: string, body: any) {
     const { key } = body;
     if (!key) throw new AppError('key required', 400);
-    const segment = role === 'admin' ? 'shop' : 'users';
+    const segment = role === 'admin' ? 'owner' : `users/${userId}`;
     const expectedPrefix = `${shopId ?? 'platform'}/${segment}/profiles/avatar_`;
     if (!key.startsWith(expectedPrefix)) throw new AppError('Invalid object key', 400);
 

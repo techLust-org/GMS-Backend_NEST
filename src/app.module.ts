@@ -13,6 +13,7 @@ import { SuperadminModule } from './superadmin/superadmin.module';
 import { AdminModule } from './admin/admin.module';
 import { TrainerModule } from './trainer/trainer.module';
 import { MemberModule } from './member/member.module';
+import { DocumentsModule } from './documents/documents.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -59,6 +60,7 @@ import { HealthController } from './health.controller';
     AdminModule,
     TrainerModule,
     MemberModule,
+    DocumentsModule,
   ],
   controllers: [HealthController],
 })

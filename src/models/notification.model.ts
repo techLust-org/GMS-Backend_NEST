@@ -18,6 +18,7 @@ export class Notification extends Model {
       'subscription_expiry', 'trainer_assigned', 'trainer_unassigned',
       'trainer_absence', 'gym_announcement', 'subscription_purchased',
       'order_placed', 'order_shipped', 'order_delivered', 'order_cancelled',
+      'document_uploaded', 'document_verified', 'document_rejected',
     ),
     allowNull: false,
   })

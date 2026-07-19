@@ -21,6 +21,8 @@ import { Ledger } from './ledger.model';
 import { Notification } from './notification.model';
 import { TrainerAbsence } from './trainer-absence.model';
 import { Referral } from './referral.model';
+import { UserDocument } from './user-document.model';
+import { DocumentAccessLog } from './document-access-log.model';
 
 let done = false;
 
@@ -124,10 +126,20 @@ export function setupAssociations(): void {
   Referral.belongsTo(Shop, { foreignKey: 'referrer_shop_id', as: 'referrerShop' });
   Referral.belongsTo(Shop, { foreignKey: 'referred_shop_id', as: 'referredShop' });
 
+  // UserDocument — a member/trainer's uploaded ID, reviewed by the shop owner.
+  User.hasMany(UserDocument, { foreignKey: 'user_id', as: 'documents' });
+  UserDocument.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+  UserDocument.belongsTo(User, { foreignKey: 'reviewed_by', as: 'reviewer' });
+
+  // DocumentAccessLog — audit trail of admin views of an original document.
+  UserDocument.hasMany(DocumentAccessLog, { foreignKey: 'document_id', as: 'accessLogs' });
+  DocumentAccessLog.belongsTo(UserDocument, { foreignKey: 'document_id', as: 'document' });
+  DocumentAccessLog.belongsTo(User, { foreignKey: 'viewed_by', as: 'viewer' });
+
   // Tenant (Shop) back-references for shop-scoped models
   [Subscription, Payment, Attendance, TrainerMember, WorkoutPlan, DietPlan,
     Product, ProductSale, SubscriptionPlan, Expense, ExpenseCategory, Ledger,
-    Notification, TrainerAbsence].forEach((M: any) => {
+    Notification, TrainerAbsence, UserDocument, DocumentAccessLog].forEach((M: any) => {
     M.belongsTo(Shop, { foreignKey: 'shop_id', as: 'shop' });
   });
 }
