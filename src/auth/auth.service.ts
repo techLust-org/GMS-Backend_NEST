@@ -2,10 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel, InjectConnection } from '@nestjs/sequelize';
 import { Sequelize } from 'sequelize-typescript';
 import { randomUUID } from 'crypto';
-import { User, Role, Shop } from '../models';
+import { User, Role, Shop, Referral } from '../models';
 import { AuthCryptoService } from '../common/auth-crypto.service';
 import { AppError } from '../common/app-error';
 import { ApiPayload } from '../common/api-payload';
+import { generateUniqueReferralCode } from '../common/referral-code';
 import { S3Service } from '../shared/s3.service';
 import { OtpService } from '../shared/otp.service';
 import { GoogleProfile } from './google-token.strategy';
@@ -16,11 +17,40 @@ export class AuthService {
     @InjectModel(User) private readonly user: typeof User,
     @InjectModel(Role) private readonly role: typeof Role,
     @InjectModel(Shop) private readonly shop: typeof Shop,
+    @InjectModel(Referral) private readonly referral: typeof Referral,
     @InjectConnection() private readonly sequelize: Sequelize,
     private readonly auth: AuthCryptoService,
     private readonly s3: S3Service,
     private readonly otp: OtpService,
   ) {}
+
+  // Resolves a referral code to the referring shop for owner registration.
+  // A bad/unknown code, or a code that resolves back to the same person
+  // registering (matched by phone — email can't collide, it's globally
+  // unique), is treated as "no referral" rather than failing the signup —
+  // a typo or a self-share shouldn't block someone from creating their
+  // account.
+  private async resolveReferrer(
+    referralCode: string | undefined | null,
+    registrantPhone: string | undefined | null,
+    t: any,
+  ): Promise<any> {
+    if (!referralCode) return null;
+    const referrerShop: any = await this.shop.findOne({
+      where: { referral_code: referralCode.trim().toUpperCase() },
+      transaction: t,
+    });
+    if (!referrerShop) return null;
+
+    if (registrantPhone) {
+      const referrerOwner: any = await this.user.findOne({
+        where: { id: referrerShop.owner_id },
+        transaction: t,
+      });
+      if (referrerOwner?.phone && referrerOwner.phone === registrantPhone) return null;
+    }
+    return referrerShop;
+  }
 
   // Shared by login/me so every role (admin/trainer/member) sees their
   // shop's branding — name, logo, theme color — plus whether the owner has
@@ -144,7 +174,7 @@ export class AuthService {
   async registerOwner(body: any) {
     const t = await this.sequelize.transaction();
     try {
-      const { firstName, lastName, email, password, shopName, shopPhone, shopEmail } = body;
+      const { firstName, lastName, email, password, shopName, shopPhone, shopEmail, referralCode } = body;
       if (!firstName || !lastName || !email || !password || !shopName) {
         throw new AppError('firstName, lastName, email, password and shopName are required', 400);
       }
@@ -155,6 +185,8 @@ export class AuthService {
 
       const adminRole = await this.role.findOne({ where: { name: 'admin' }, transaction: t });
       if (!adminRole) throw new AppError('Admin role not configured', 500);
+
+      const referrerShop = await this.resolveReferrer(referralCode, shopPhone, t);
 
       const password_hash = await this.auth.hash(password);
       const owner: any = await this.user.create(
@@ -170,6 +202,7 @@ export class AuthService {
         { transaction: t },
       );
 
+      const newReferralCode = await generateUniqueReferralCode(this.shop, t);
       const shop: any = await this.shop.create(
         {
           name: shopName,
@@ -177,11 +210,20 @@ export class AuthService {
           phone: shopPhone || null,
           email: shopEmail || email,
           is_active: false,
+          referral_code: newReferralCode,
+          referred_by_shop_id: referrerShop?.id ?? null,
         } as any,
         { transaction: t },
       );
 
       await owner.update({ shop_id: shop.id }, { transaction: t });
+
+      if (referrerShop) {
+        await this.referral.create(
+          { referrer_shop_id: referrerShop.id, referred_shop_id: shop.id, status: 'pending' } as any,
+          { transaction: t },
+        );
+      }
 
       await t.commit();
 
@@ -219,7 +261,7 @@ export class AuthService {
   async registerOwnerWithGoogle(profile: GoogleProfile, body: any) {
     const t = await this.sequelize.transaction();
     try {
-      const { shopName, shopPhone, shopEmail } = body;
+      const { shopName, shopPhone, shopEmail, referralCode } = body;
       if (!shopName) throw new AppError('shopName is required', 400);
 
       const existing = await this.user.findOne({ where: { email: profile.email }, transaction: t });
@@ -227,6 +269,8 @@ export class AuthService {
 
       const adminRole = await this.role.findOne({ where: { name: 'admin' }, transaction: t });
       if (!adminRole) throw new AppError('Admin role not configured', 500);
+
+      const referrerShop = await this.resolveReferrer(referralCode, shopPhone, t);
 
       const password_hash = await this.unusablePasswordHash();
       const owner: any = await this.user.create(
@@ -243,6 +287,7 @@ export class AuthService {
         { transaction: t },
       );
 
+      const newReferralCode = await generateUniqueReferralCode(this.shop, t);
       const shop: any = await this.shop.create(
         {
           name: shopName,
@@ -250,11 +295,20 @@ export class AuthService {
           phone: shopPhone || null,
           email: shopEmail || profile.email,
           is_active: false,
+          referral_code: newReferralCode,
+          referred_by_shop_id: referrerShop?.id ?? null,
         } as any,
         { transaction: t },
       );
 
       await owner.update({ shop_id: shop.id }, { transaction: t });
+
+      if (referrerShop) {
+        await this.referral.create(
+          { referrer_shop_id: referrerShop.id, referred_shop_id: shop.id, status: 'pending' } as any,
+          { transaction: t },
+        );
+      }
 
       await t.commit();
 
@@ -338,7 +392,7 @@ export class AuthService {
   async registerOwnerWithWhatsApp(body: any) {
     const t = await this.sequelize.transaction();
     try {
-      const { phone, code, firstName, lastName, email, shopName, shopEmail } = body;
+      const { phone, code, firstName, lastName, email, shopName, shopEmail, referralCode } = body;
       if (!phone || !code) throw new AppError('phone and code are required', 400);
       if (!firstName || !lastName || !email || !shopName) {
         throw new AppError('firstName, lastName, email and shopName are required', 400);
@@ -352,6 +406,8 @@ export class AuthService {
 
       const adminRole = await this.role.findOne({ where: { name: 'admin' }, transaction: t });
       if (!adminRole) throw new AppError('Admin role not configured', 500);
+
+      const referrerShop = await this.resolveReferrer(referralCode, normalizedPhone, t);
 
       const password_hash = await this.unusablePasswordHash();
       const owner: any = await this.user.create(
@@ -367,6 +423,7 @@ export class AuthService {
         { transaction: t },
       );
 
+      const newReferralCode = await generateUniqueReferralCode(this.shop, t);
       const shop: any = await this.shop.create(
         {
           name: shopName,
@@ -374,11 +431,20 @@ export class AuthService {
           phone: normalizedPhone,
           email: shopEmail || email,
           is_active: false,
+          referral_code: newReferralCode,
+          referred_by_shop_id: referrerShop?.id ?? null,
         } as any,
         { transaction: t },
       );
 
       await owner.update({ shop_id: shop.id }, { transaction: t });
+
+      if (referrerShop) {
+        await this.referral.create(
+          { referrer_shop_id: referrerShop.id, referred_shop_id: shop.id, status: 'pending' } as any,
+          { transaction: t },
+        );
+      }
 
       await t.commit();
 

@@ -42,6 +42,14 @@ import { HealthController } from './health.controller';
       rootPath: join(__dirname, '..', 'public', 'account-deletion'),
       serveRoot: '/account-deletion',
     }),
+    // Public marketing landing page at the site root. Registered after the
+    // more specific mounts above; API and health routes are excluded so the
+    // static wildcard can never shadow them.
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'public', 'landing'),
+      serveRoot: '/',
+      exclude: ['/api/(.*)', '/health'],
+    }),
     CommonModule,
     SharedModule,
     PublicModule,

@@ -20,6 +20,7 @@ import { Expense } from './expense.model';
 import { Ledger } from './ledger.model';
 import { Notification } from './notification.model';
 import { TrainerAbsence } from './trainer-absence.model';
+import { Referral } from './referral.model';
 
 let done = false;
 
@@ -114,6 +115,14 @@ export function setupAssociations(): void {
   // TrainerAbsence
   User.hasMany(TrainerAbsence, { foreignKey: 'trainer_id', as: 'absences' });
   TrainerAbsence.belongsTo(User, { foreignKey: 'trainer_id', as: 'trainer' });
+
+  // Referral — a shop refers other shops (as referrer), and is referred by
+  // at most one shop (as referred, via referred_by_shop_id on Shop itself).
+  Shop.belongsTo(Shop, { foreignKey: 'referred_by_shop_id', as: 'referredByShop' });
+  Shop.hasMany(Referral, { foreignKey: 'referrer_shop_id', as: 'referralsGiven' });
+  Shop.hasOne(Referral, { foreignKey: 'referred_shop_id', as: 'referralReceived' });
+  Referral.belongsTo(Shop, { foreignKey: 'referrer_shop_id', as: 'referrerShop' });
+  Referral.belongsTo(Shop, { foreignKey: 'referred_shop_id', as: 'referredShop' });
 
   // Tenant (Shop) back-references for shop-scoped models
   [Subscription, Payment, Attendance, TrainerMember, WorkoutPlan, DietPlan,
