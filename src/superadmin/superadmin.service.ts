@@ -165,7 +165,9 @@ export class SuperadminService {
   async presignOwnerAvatar(body: any) {
     const { contentType } = body;
     if (!contentType) throw new AppError('contentType required', 400);
-    const key = this.s3.buildProfilePictureKey(null, 'admin', contentType);
+    // userId is unused for the 'admin' role (owner avatars live under a
+    // shared owner/profiles/ folder, not a per-user one).
+    const key = this.s3.buildProfilePictureKey(null, '', 'admin', contentType);
     const uploadUrl = await this.s3.getUploadUrl(key, contentType);
     return new ApiPayload({ uploadUrl, key }, 'Upload URL generated');
   }
@@ -177,7 +179,7 @@ export class SuperadminService {
     if (!shopName || !ownerFirstName || !ownerLastName || !ownerEmail) {
       throw new AppError('shopName, ownerFirstName, ownerLastName and ownerEmail are required', 400);
     }
-    if (profilePicKey && !String(profilePicKey).startsWith('platform/shop/profiles/avatar_')) {
+    if (profilePicKey && !String(profilePicKey).startsWith('platform/owner/profiles/avatar_')) {
       throw new AppError('Invalid profile picture key', 400);
     }
 

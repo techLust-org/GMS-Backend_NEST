@@ -92,6 +92,21 @@
 
   /* ---------- Hero ---------- */
   .hero { position: relative; padding: 150px 0 80px; overflow: hidden; }
+  .hero-bg { position: absolute; inset: 0; overflow: hidden; }
+  .hero-slide {
+    position: absolute; inset: 0; opacity: 0; transition: opacity 1.6s ease;
+    background-size: cover; background-position: center;
+    filter: saturate(.75) brightness(.62);
+  }
+  .hero-slide.active { opacity: 1; }
+  .hero-slide video { width: 100%; height: 100%; object-fit: cover; }
+  /* Readability scrim above the media, below the glow/grid/content */
+  .hero-bg::after {
+    content: ''; position: absolute; inset: 0;
+    background:
+      linear-gradient(90deg, rgba(11,11,11,.93) 0%, rgba(11,11,11,.74) 46%, rgba(11,11,11,.5) 100%),
+      linear-gradient(180deg, rgba(11,11,11,.8) 0%, rgba(11,11,11,.15) 32%, rgba(11,11,11,.15) 62%, #0B0B0B 100%);
+  }
   .hero-glow {
     position: absolute; width: 780px; height: 780px; border-radius: 50%;
     background: radial-gradient(circle, rgba(215,255,69,.13) 0%, rgba(215,255,69,.04) 40%, transparent 68%);
@@ -215,8 +230,19 @@
 
   /* Roles */
   .roles-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-  .role-card { background: var(--surface1); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 30px 26px; transition: border-color .3s; }
+  .role-card { background: var(--surface1); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; transition: border-color .3s; }
   .role-card:hover { border-color: rgba(215,255,69,.35); }
+  .role-photo { position: relative; height: 180px; overflow: hidden; }
+  .role-photo img {
+    width: 100%; height: 100%; object-fit: cover; filter: saturate(.85);
+    transition: transform .6s cubic-bezier(.22,1,.36,1); will-change: transform;
+  }
+  .role-card:hover .role-photo img { transform: scale(1.06); }
+  .role-photo::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(11,11,11,.18), rgba(22,22,22,0) 40%, rgba(22,22,22,1) 99%);
+  }
+  .role-body { padding: 20px 26px 30px; }
   .role-pill {
     display: inline-block; background: var(--surface3); color: var(--lime);
     font-size: 11px; font-weight: 800; letter-spacing: 2px; border-radius: 999px;
@@ -287,7 +313,12 @@
   .pricing-note { text-align: center; color: var(--muted2); font-size: 12.5px; margin-top: 26px; }
 
   /* Final CTA */
-  .final-cta { text-align: center; padding: 100px 0 110px; position: relative; overflow: hidden; }
+  .final-cta {
+    text-align: center; padding: 120px 0 130px; position: relative; overflow: hidden;
+    background:
+      linear-gradient(180deg, var(--bg) 0%, rgba(11,11,11,.72) 22%, rgba(11,11,11,.78) 78%, var(--bg) 100%),
+      url('/img/cta-bg.jpg') center 40% / cover no-repeat;
+  }
   .final-cta .glow {
     position: absolute; left: 50%; top: 55%; transform: translate(-50%,-50%);
     width: 720px; height: 480px; border-radius: 50%;
@@ -346,6 +377,7 @@
 
 <!-- ======================= HERO ======================= -->
 <header class="hero" id="top">
+  <div class="hero-bg" id="hero-bg" aria-hidden="true"></div>
   <div class="hero-glow" id="hero-glow"></div>
   <div class="hero-grid-bg"></div>
   <div class="container hero-inner">
@@ -512,6 +544,8 @@
     </div>
     <div class="roles-grid">
       <div class="role-card" data-reveal>
+        <div class="role-photo"><img src="/img/role-owner.jpg" alt="Dumbbell rack on a commercial gym floor" loading="lazy" /></div>
+        <div class="role-body">
         <span class="role-pill">OWNER</span>
         <h3>Total control</h3>
         <p>The complete command centre for your business.</p>
@@ -521,8 +555,11 @@
           <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Collect fees and track every due</li>
           <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Your logo and theme on the app</li>
         </ul>
+        </div>
       </div>
       <div class="role-card" data-reveal>
+        <div class="role-photo"><img src="/img/role-trainer.jpg" alt="Trainer performing a barbell curl in a gym" loading="lazy" style="object-position: center 28%" /></div>
+        <div class="role-body">
         <span class="role-pill">TRAINER</span>
         <h3>Coach, organised</h3>
         <p>Everything a trainer needs to manage their members.</p>
@@ -532,8 +569,11 @@
           <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Track member attendance and progress</li>
           <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>See their schedule and assigned members</li>
         </ul>
+        </div>
       </div>
       <div class="role-card" data-reveal>
+        <div class="role-photo"><img src="/img/role-member.jpg" alt="Athlete pressing a barbell overhead" loading="lazy" style="object-position: center 20%" /></div>
+        <div class="role-body">
         <span class="role-pill">MEMBER</span>
         <h3>Train with clarity</h3>
         <p>Members get a premium fitness-app experience.</p>
@@ -543,6 +583,7 @@
           <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Pay fees online and see receipts</li>
           <li><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Shop supplements from the gym's store</li>
         </ul>
+        </div>
       </div>
     </div>
   </div>
@@ -705,6 +746,76 @@
   }
   window.addEventListener('scroll', onScrollNav, { passive: true });
   onScrollNav();
+
+  /* ---------------- Hero background slider (images + videos) ---------------- */
+  (function heroSlider() {
+    var bg = document.getElementById('hero-bg');
+    if (!bg) return;
+    var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var conn = navigator.connection || {};
+    // Videos are heavy; keep them for capable contexts, stills otherwise.
+    var allowVideo = !reducedMotion && !conn.saveData && window.innerWidth >= 640;
+
+    var SLIDES = [
+      { img: '/img/hero-still-1.jpg' },
+      { video: '/media/hero-2.mp4' },
+      { img: '/img/hero-still-2.jpg' },
+      { video: '/media/hero-1.mp4' },
+      { video: '/media/hero-3.mp4' }
+    ].filter(function (s) { return s.img || allowVideo; });
+
+    var els = SLIDES.map(function () {
+      var d = document.createElement('div');
+      d.className = 'hero-slide';
+      bg.appendChild(d);
+      return d;
+    });
+
+    // Media is attached lazily: a slide's asset loads only when it is about
+    // to be shown, so first paint costs one image, never a video.
+    function prepare(i) {
+      var s = SLIDES[i], el = els[i];
+      if (!el || el.__ready) return;
+      el.__ready = true;
+      if (s.img) {
+        el.style.backgroundImage = 'url("' + s.img + '")';
+      } else {
+        var v = document.createElement('video');
+        v.muted = true; v.loop = true; v.playsInline = true;
+        v.setAttribute('playsinline', ''); v.setAttribute('muted', '');
+        v.preload = 'auto'; v.src = s.video;
+        el.appendChild(v);
+        el.__video = v;
+      }
+    }
+
+    var idx = 0;
+    prepare(0);
+    els[0].classList.add('active');
+    if (reducedMotion || els.length < 2) return; // static first still
+
+    prepare(1);
+    setInterval(function () {
+      var prev = els[idx];
+      idx = (idx + 1) % els.length;
+      var next = els[idx];
+      prepare((idx + 1) % els.length); // warm the one after next
+      if (next.__video) {
+        try { next.__video.currentTime = 0; } catch (e) { /* not seekable yet */ }
+        next.__video.play().catch(function () {});
+      }
+      next.classList.add('active');
+      prev.classList.remove('active');
+      if (prev.__video) setTimeout(function () { prev.__video.pause(); }, 1700);
+    }, 8000);
+
+    document.addEventListener('visibilitychange', function () {
+      var v = els[idx].__video;
+      if (!v) return;
+      if (document.hidden) v.pause();
+      else v.play().catch(function () {});
+    });
+  })();
 
   /* ---------------- Motion (Framer Motion) animations ---------------- */
   var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
