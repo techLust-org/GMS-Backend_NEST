@@ -12,6 +12,7 @@ import { MailService } from './mail.service';
 import { PushService } from './push.service';
 import { WhatsAppService } from './whatsapp.service';
 import { OtpService } from './otp.service';
+import { FirebaseAdminService } from './firebase-admin.service';
 
 @Global()
 @Module({
@@ -19,10 +20,12 @@ import { OtpService } from './otp.service';
   providers: [
     RazorpayService, NotificationService, LedgerService, FinancialService, CronService,
     NotificationsInboxService, S3Service, MailService, PushService, WhatsAppService, OtpService,
+    FirebaseAdminService,
   ],
   exports: [
     RazorpayService, NotificationService, LedgerService, FinancialService,
     NotificationsInboxService, S3Service, MailService, PushService, WhatsAppService, OtpService,
+    FirebaseAdminService,
   ],
 })
 export class SharedModule {}
