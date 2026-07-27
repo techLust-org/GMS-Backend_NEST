@@ -5,6 +5,7 @@ import { Shop, SubscriptionPlan, Role, User } from '../models';
 import { AuthCryptoService } from '../common/auth-crypto.service';
 import { S3Service } from '../shared/s3.service';
 import { OtpService } from '../shared/otp.service';
+import { FirebaseAdminService } from '../shared/firebase-admin.service';
 import { AppError } from '../common/app-error';
 import { ApiPayload } from '../common/api-payload';
 import { GoogleProfile } from '../auth/google-token.strategy';
@@ -23,6 +24,7 @@ export class PublicShopsService {
     private readonly auth: AuthCryptoService,
     private readonly s3: S3Service,
     private readonly otp: OtpService,
+    private readonly firebaseAdmin: FirebaseAdminService,
   ) {}
 
   private async serializeShop(shop: any) {
@@ -147,6 +149,67 @@ export class PublicShopsService {
       gender: gender || null,
       status: 'active',
       google_id: profile.googleId,
+    } as any);
+
+    const token = this.auth.sign({
+      id: user.id,
+      role: 'member',
+      email: user.email,
+      shop_id: shopId,
+    });
+
+    return new ApiPayload(
+      {
+        token,
+        user: {
+          id: user.id,
+          firstName: user.first_name,
+          lastName: user.last_name,
+          email: user.email,
+          role: 'member',
+          shopId,
+          status: user.status,
+          shopName: shop.name,
+          shopLogoUrl: shop.logo_url ? await this.s3.getViewUrl(shop.logo_url) : null,
+          shopThemeColor: shop.theme_color,
+        },
+      },
+      'Account created — welcome!',
+    );
+  }
+
+  // Same as registerMember, but identity is proven by a Firebase Phone Auth
+  // ID token instead of a password. Email is still required (used as the
+  // account's login identity); phone is the Firebase-verified number.
+  async registerMemberWithPhone(shopId: string, body: any) {
+    const shop: any = await this.shop.findOne({ where: { id: shopId, is_active: true } });
+    if (!shop) throw new AppError('Gym not found', 404);
+
+    const { idToken, firstName, lastName, email, gender } = body;
+    if (!firstName || !lastName || !email) {
+      throw new AppError('firstName, lastName and email are required', 400);
+    }
+    const normalizedPhone = await this.firebaseAdmin.verifyPhoneToken(idToken);
+
+    const existingEmail = await this.user.findOne({ where: { email } });
+    if (existingEmail) throw new AppError('An account with this email already exists', 409);
+    const existingPhone = await this.user.findOne({ where: { phone: normalizedPhone } });
+    if (existingPhone) throw new AppError('An account with this phone number already exists', 409);
+
+    const memberRole: any = await this.role.findOne({ where: { name: 'member' } });
+    if (!memberRole) throw new AppError('Member role not configured', 500);
+
+    const password_hash = await this.auth.hash(`passwordless:${randomUUID()}:${randomUUID()}`);
+    const user: any = await this.user.create({
+      role_id: memberRole.id,
+      shop_id: shopId,
+      first_name: firstName,
+      last_name: lastName,
+      email,
+      password_hash,
+      phone: normalizedPhone,
+      gender: gender || null,
+      status: 'active',
     } as any);
 
     const token = this.auth.sign({

@@ -40,6 +40,22 @@ export class AuthController {
     return this.authService.registerOwnerWithGoogle(profile, body);
   }
 
+  // Body: { idToken } — a Firebase Phone Auth ID token, obtained client-side
+  // via firebase_auth after the user verifies their phone with an SMS code.
+  @Post('phone')
+  @HttpCode(200)
+  @ResponseMessage('Login successful')
+  loginWithPhone(@Body() body: any) {
+    return this.authService.loginWithPhone(body.idToken);
+  }
+
+  // Body: { idToken, firstName, lastName, email, shopName, shopEmail?, referralCode? }
+  @Post('register-owner-phone')
+  @HttpCode(201)
+  registerOwnerWithPhone(@Body() body: any) {
+    return this.authService.registerOwnerWithPhone(body);
+  }
+
   // Body: { phone }
   @Post('whatsapp-otp/send')
   @HttpCode(200)

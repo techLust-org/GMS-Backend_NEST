@@ -9,6 +9,7 @@ import { ApiPayload } from '../common/api-payload';
 import { generateUniqueReferralCode } from '../common/referral-code';
 import { S3Service } from '../shared/s3.service';
 import { OtpService } from '../shared/otp.service';
+import { FirebaseAdminService } from '../shared/firebase-admin.service';
 import { GoogleProfile } from './google-token.strategy';
 
 @Injectable()
@@ -22,6 +23,7 @@ export class AuthService {
     private readonly auth: AuthCryptoService,
     private readonly s3: S3Service,
     private readonly otp: OtpService,
+    private readonly firebaseAdmin: FirebaseAdminService,
   ) {}
 
   // Resolves a referral code to the referring shop for owner registration.
@@ -384,6 +386,131 @@ export class AuthService {
       token,
       user: await this.serializeUser(user),
     };
+  }
+
+  // Firebase Phone Auth is another alternate way to sign into an EXISTING
+  // account, matched by phone number — same shape as loginWithGoogle /
+  // loginWithWhatsApp. No account is created here. The client authenticates
+  // with Firebase's own phone-auth SDK (which handles SMS delivery and
+  // verification itself) and sends us the resulting Firebase ID token; we
+  // verify it server-side and trust its embedded phone_number claim.
+  async loginWithPhone(idToken: string) {
+    const normalizedPhone = await this.firebaseAdmin.verifyPhoneToken(idToken);
+
+    const user: any = await this.user.findOne({
+      where: { phone: normalizedPhone },
+      include: [{ model: Role, attributes: ['name'] }],
+      order: [['created_at', 'ASC']],
+    });
+
+    if (!user) {
+      throw new AppError(
+        'No account found for this phone number. Create a gym or join one first.',
+        404,
+      );
+    }
+    if (user.status !== 'active') throw new AppError('Account is inactive or suspended', 403);
+
+    const token = this.auth.sign({
+      id: user.id,
+      role: user.Role.name,
+      email: user.email,
+      shop_id: user.shop_id,
+    });
+
+    return {
+      token,
+      user: await this.serializeUser(user),
+    };
+  }
+
+  // Same as registerOwner, but identity is proven by a Firebase Phone Auth ID
+  // token instead of a password — email is still required (used for the
+  // account's login identity/contact), phone is the Firebase-verified number.
+  async registerOwnerWithPhone(body: any) {
+    const t = await this.sequelize.transaction();
+    try {
+      const { idToken, firstName, lastName, email, shopName, shopEmail, referralCode } = body;
+      if (!firstName || !lastName || !email || !shopName) {
+        throw new AppError('firstName, lastName, email and shopName are required', 400);
+      }
+      const normalizedPhone = await this.firebaseAdmin.verifyPhoneToken(idToken);
+
+      const existingEmail = await this.user.findOne({ where: { email }, transaction: t });
+      if (existingEmail) throw new AppError('An account with this email already exists', 409);
+      const existingPhone = await this.user.findOne({ where: { phone: normalizedPhone }, transaction: t });
+      if (existingPhone) throw new AppError('An account with this phone number already exists', 409);
+
+      const adminRole = await this.role.findOne({ where: { name: 'admin' }, transaction: t });
+      if (!adminRole) throw new AppError('Admin role not configured', 500);
+
+      const referrerShop = await this.resolveReferrer(referralCode, normalizedPhone, t);
+
+      const password_hash = await this.unusablePasswordHash();
+      const owner: any = await this.user.create(
+        {
+          role_id: adminRole.id,
+          first_name: firstName,
+          last_name: lastName,
+          email,
+          password_hash,
+          phone: normalizedPhone,
+          status: 'active',
+        } as any,
+        { transaction: t },
+      );
+
+      const newReferralCode = await generateUniqueReferralCode(this.shop, t);
+      const shop: any = await this.shop.create(
+        {
+          name: shopName,
+          owner_id: owner.id,
+          phone: normalizedPhone,
+          email: shopEmail || email,
+          is_active: false,
+          referral_code: newReferralCode,
+          referred_by_shop_id: referrerShop?.id ?? null,
+        } as any,
+        { transaction: t },
+      );
+
+      await owner.update({ shop_id: shop.id }, { transaction: t });
+
+      if (referrerShop) {
+        await this.referral.create(
+          { referrer_shop_id: referrerShop.id, referred_shop_id: shop.id, status: 'pending' } as any,
+          { transaction: t },
+        );
+      }
+
+      await t.commit();
+
+      const token = this.auth.sign({
+        id: owner.id,
+        role: 'admin',
+        email: owner.email,
+        shop_id: shop.id,
+      });
+
+      return new ApiPayload(
+        {
+          token,
+          user: {
+            id: owner.id,
+            firstName: owner.first_name,
+            lastName: owner.last_name,
+            email: owner.email,
+            role: 'admin',
+            shopId: shop.id,
+          },
+          shop: { id: shop.id, name: shop.name, isActive: shop.is_active },
+        },
+        'Account created',
+      );
+    } catch (err) {
+      await t.rollback();
+      throw err;
+    }
   }
 
   // Same as registerOwner, but identity is proven by a WhatsApp OTP instead

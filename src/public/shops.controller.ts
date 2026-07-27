@@ -45,4 +45,11 @@ export class PublicShopsController {
   registerMemberWithWhatsApp(@Param('id') id: string, @Body() body: any) {
     return this.shopsService.registerMemberWithWhatsApp(id, body);
   }
+
+  // Body: { idToken, firstName, lastName, email, gender? }
+  @Post(':id/register-member-phone')
+  @HttpCode(201)
+  registerMemberWithPhone(@Param('id') id: string, @Body() body: any) {
+    return this.shopsService.registerMemberWithPhone(id, body);
+  }
 }
