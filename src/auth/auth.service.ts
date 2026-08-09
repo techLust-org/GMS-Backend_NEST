@@ -729,6 +729,9 @@ export class AuthService {
 
   async changePassword(userId: string, body: any) {
     const { currentPassword, newPassword } = body;
+    if (!newPassword || String(newPassword).trim().length < 8) {
+      throw new AppError('New password must be at least 8 characters', 400);
+    }
     const user: any = await this.user.scope('withPassword').findByPk(userId);
     const valid = await this.auth.compare(currentPassword, user.password_hash);
     if (!valid) throw new AppError('Current password incorrect', 400);

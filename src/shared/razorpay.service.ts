@@ -28,7 +28,8 @@ export class RazorpayService {
       .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
       .update(body)
       .digest('hex');
-    return expected === signature;
+    if (expected.length !== signature.length) return false;
+    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
   }
 
   async refund(paymentId: string, amount: number | string) {

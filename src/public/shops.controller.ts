@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Param, Body, HttpCode, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { Throttle } from '@nestjs/throttler';
 import { PublicShopsService } from './shops.service';
 import { CurrentUser } from '../common/decorators';
 import { GoogleProfile } from '../auth/google-token.strategy';
@@ -23,6 +24,7 @@ export class PublicShopsController {
 
   @Post(':id/register-member')
   @HttpCode(201)
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   registerMember(@Param('id') id: string, @Body() body: any) {
     return this.shopsService.registerMember(id, body);
   }
@@ -30,6 +32,7 @@ export class PublicShopsController {
   // Body: { id_token, phone?, gender? }
   @Post(':id/register-member-google')
   @HttpCode(201)
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @UseGuards(AuthGuard('google-id-token'))
   registerMemberWithGoogle(
     @Param('id') id: string,
@@ -42,6 +45,7 @@ export class PublicShopsController {
   // Body: { phone, code, firstName, lastName, email, gender? }
   @Post(':id/register-member-whatsapp')
   @HttpCode(201)
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   registerMemberWithWhatsApp(@Param('id') id: string, @Body() body: any) {
     return this.shopsService.registerMemberWithWhatsApp(id, body);
   }
@@ -49,6 +53,7 @@ export class PublicShopsController {
   // Body: { idToken, firstName, lastName, email, gender? }
   @Post(':id/register-member-phone')
   @HttpCode(201)
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   registerMemberWithPhone(@Param('id') id: string, @Body() body: any) {
     return this.shopsService.registerMemberWithPhone(id, body);
   }

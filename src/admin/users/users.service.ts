@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
+import { randomBytes } from 'crypto';
 import { Op } from 'sequelize';
 import { User, Role, Subscription, SubscriptionPlan } from '../../models';
 import { AuthCryptoService } from '../../common/auth-crypto.service';
@@ -73,7 +74,7 @@ export class UsersService {
     const existing = await this.user.findOne({ where: { email } });
     if (existing) throw new AppError('Email already in use', 409);
 
-    const password_hash = await this.auth.hash(password || 'Password123!');
+    const password_hash = await this.auth.hash(password || randomBytes(24).toString('base64'));
     const user: any = await this.user.create({
       role_id: roleRecord.id,
       shop_id: shopId,
