@@ -1,5 +1,6 @@
 import { Controller, Post, Get, Put, Delete, Body, HttpCode, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser, ResponseMessage } from '../common/decorators';
@@ -11,6 +12,7 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(200)
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @ResponseMessage('Login successful')
   login(@Body() body: any) {
     return this.authService.login(body);
@@ -26,6 +28,7 @@ export class AuthController {
   // Body: { id_token: '<Google ID token from google_sign_in>' }
   @Post('google')
   @HttpCode(200)
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
   @ResponseMessage('Login successful')
   @UseGuards(AuthGuard('google-id-token'))
   loginWithGoogle(@CurrentUser() profile: GoogleProfile) {
@@ -44,6 +47,7 @@ export class AuthController {
   // via firebase_auth after the user verifies their phone with an SMS code.
   @Post('phone')
   @HttpCode(200)
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @ResponseMessage('Login successful')
   loginWithPhone(@Body() body: any) {
     return this.authService.loginWithPhone(body.idToken);
@@ -59,6 +63,7 @@ export class AuthController {
   // Body: { phone }
   @Post('whatsapp-otp/send')
   @HttpCode(200)
+  @Throttle({ default: { ttl: 60000, limit: 3 } })
   sendWhatsAppOtp(@Body() body: any) {
     return this.authService.sendWhatsAppOtp(body);
   }
@@ -66,6 +71,7 @@ export class AuthController {
   // Body: { phone, code }
   @Post('whatsapp-otp/login')
   @HttpCode(200)
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @ResponseMessage('Login successful')
   loginWithWhatsApp(@Body() body: any) {
     return this.authService.loginWithWhatsApp(body);
@@ -83,6 +89,7 @@ export class AuthController {
   // account-deletion flow.
   @Post('delete-account')
   @HttpCode(200)
+  @Throttle({ default: { ttl: 60000, limit: 3 } })
   deleteAccount(@Body() body: any) {
     return this.authService.deleteAccount(body);
   }

@@ -1,7 +1,9 @@
 import { Module, OnApplicationBootstrap } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { SequelizeModule } from '@nestjs/sequelize';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ServeStaticModule } from '@nestjs/serve-static';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { join } from 'path';
 import { setupAssociations } from './models';
 import { CommonModule } from './common/common.module';
@@ -18,6 +20,9 @@ import { HealthController } from './health.controller';
 
 @Module({
   imports: [
+    ThrottlerModule.forRoot({
+      throttlers: [{ ttl: 60000, limit: 30 }],
+    }),
     SequelizeModule.forRoot({
       dialect: 'postgres',
       host: process.env.DB_HOST || 'localhost',
@@ -28,6 +33,9 @@ import { HealthController } from './health.controller';
       autoLoadModels: true,
       synchronize: false,
       logging: false,
+      dialectOptions: process.env.NODE_ENV === 'production' ? {
+        ssl: { require: true, rejectUnauthorized: false },
+      } : undefined,
     }),
     ScheduleModule.forRoot(),
     // Super-admin control panel (server-rendered static SPA) at /superadmin.
@@ -63,6 +71,7 @@ import { HealthController } from './health.controller';
     DocumentsModule,
   ],
   controllers: [HealthController],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule implements OnApplicationBootstrap {
   onApplicationBootstrap() {

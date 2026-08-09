@@ -46,10 +46,10 @@ export class OtpService {
     await this.otpRequest.create({ phone, code_hash, expires_at } as any);
 
     const sent = await this.whatsapp.sendOtp(phone, code);
-    // If WhatsApp isn't configured (or delivery failed) outside production,
-    // hand the code back directly so the flow is still testable end-to-end
-    // — same fallback pattern used for the owner-welcome email.
-    const devCode = !sent && process.env.NODE_ENV !== 'production' ? code : undefined;
+    // Only return the code in explicitly marked dev/test environments — never
+    // in production or any other (possibly internet-facing) environment.
+    const isDev = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test';
+    const devCode = !sent && isDev ? code : undefined;
     return { sent, devCode };
   }
 

@@ -13,8 +13,15 @@ import { ActiveShopGuard } from './guards/active-shop.guard';
 @Module({
   imports: [
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'fallback_secret',
-      signOptions: { expiresIn: process.env.JWT_EXPIRES_IN || '7d' },
+      secret: (() => {
+        const secret = process.env.JWT_SECRET;
+        if (!secret || secret === 'fallback_secret') {
+          throw new Error('FATAL: JWT_SECRET environment variable must be set to a strong, unique value');
+        }
+        return secret;
+      })(),
+      signOptions: { expiresIn: process.env.JWT_EXPIRES_IN || '7d', algorithm: 'HS256' },
+      verifyOptions: { algorithms: ['HS256'] },
     }),
     SequelizeModule.forFeature([ShopSubscription]),
   ],

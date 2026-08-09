@@ -20,7 +20,7 @@ export class WhatsAppService {
   // configured or delivery fails, same pattern as MailService.
   async sendOtp(phone: string, code: string): Promise<boolean> {
     if (!this.isConfigured()) {
-      this.logger.warn(`WhatsApp not configured — OTP for ${phone}: ${code}`);
+      this.logger.warn(`WhatsApp not configured — OTP requested for ${phone.slice(0, -4).replace(/./g, '*')}${phone.slice(-4)}`);
       return false;
     }
 
