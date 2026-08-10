@@ -789,6 +789,22 @@ function viewSettings(root) {
       ev.target.disabled = false;
     } }, 'Update password'));
   root.append(card);
+
+  const backupCard = el('div', { class: 'card', style: 'padding:22px;max-width:440px;margin-top:20px' },
+    el('div', { class: 'section-title', style: 'margin-top:0' }, 'Database Backup'),
+    el('p', { class: 'cell-sub', style: 'margin-bottom:14px' },
+      'Trigger a manual PostgreSQL backup. The dump is compressed and uploaded to S3.'),
+    el('button', { class: 'btn', id: 'backupBtn', onclick: async (ev) => {
+      ev.target.disabled = true;
+      ev.target.textContent = 'Backing up…';
+      try {
+        await api('/db-backup');
+        toast('Database backup completed and uploaded to S3');
+      } catch (e) { toast(e.message, false); }
+      ev.target.disabled = false;
+      ev.target.textContent = 'Start Backup';
+    } }, 'Start Backup'));
+  root.append(backupCard);
 }
 
 // ---------- boot ----------

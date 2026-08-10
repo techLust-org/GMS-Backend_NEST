@@ -2,6 +2,7 @@ import {
   Controller, Get, Post, Put, Patch, Delete, Body, Param, Query, HttpCode, UseGuards,
 } from '@nestjs/common';
 import { SuperadminService } from './superadmin.service';
+import { DbBackupCronService } from '../shared/db-backup.cron';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles, CurrentUser } from '../common/decorators';
@@ -11,7 +12,10 @@ import { Roles, CurrentUser } from '../common/decorators';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('super_admin')
 export class SuperadminController {
-  constructor(private readonly superadminService: SuperadminService) {}
+  constructor(
+    private readonly superadminService: SuperadminService,
+    private readonly dbBackupCronService: DbBackupCronService,
+  ) {}
 
   @Get('stats')
   stats() {
@@ -100,6 +104,13 @@ export class SuperadminController {
   @Get('subscriptions')
   listSubscriptions() {
     return this.superadminService.listSubscriptions();
+  }
+
+  // Database backup
+  @Get('db-backup')
+  async triggerBackup() {
+    await this.dbBackupCronService.handleDatabaseBackup();
+    return { message: 'Database backup completed and uploaded to S3' };
   }
 
   // Account
