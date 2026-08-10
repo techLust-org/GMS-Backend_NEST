@@ -6,6 +6,7 @@ import { NotificationService } from './notification.service';
 import { LedgerService } from './ledger.service';
 import { FinancialService } from './financial.service';
 import { CronService } from './cron.service';
+import { DbBackupCronService } from './db-backup.cron';
 import { NotificationsInboxService } from './notifications-inbox.service';
 import { S3Service } from './s3.service';
 import { MailService } from './mail.service';
@@ -19,13 +20,13 @@ import { FirebaseAdminService } from './firebase-admin.service';
   imports: [SequelizeModule.forFeature([Notification, Ledger, Attendance, Subscription, User, OtpRequest])],
   providers: [
     RazorpayService, NotificationService, LedgerService, FinancialService, CronService,
-    NotificationsInboxService, S3Service, MailService, PushService, WhatsAppService, OtpService,
-    FirebaseAdminService,
+    DbBackupCronService, NotificationsInboxService, S3Service, MailService, PushService,
+    WhatsAppService, OtpService, FirebaseAdminService,
   ],
   exports: [
     RazorpayService, NotificationService, LedgerService, FinancialService,
-    NotificationsInboxService, S3Service, MailService, PushService, WhatsAppService, OtpService,
-    FirebaseAdminService,
+    DbBackupCronService, NotificationsInboxService, S3Service, MailService, PushService,
+    WhatsAppService, OtpService, FirebaseAdminService,
   ],
 })
 export class SharedModule {}
