@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/sequelize';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { randomUUID } from 'crypto';
 import { Shop, SubscriptionPlan, Role, User } from '../models';
 import { AuthCryptoService } from '../common/auth-crypto.service';
@@ -17,10 +18,10 @@ import { GoogleProfile } from '../auth/google-token.strategy';
 @Injectable()
 export class PublicShopsService {
   constructor(
-    @InjectModel(Shop) private readonly shop: typeof Shop,
-    @InjectModel(SubscriptionPlan) private readonly subscriptionPlan: typeof SubscriptionPlan,
-    @InjectModel(Role) private readonly role: typeof Role,
-    @InjectModel(User) private readonly user: typeof User,
+    @InjectModel(Shop.name) private readonly shop: Model<any>,
+    @InjectModel(SubscriptionPlan.name) private readonly subscriptionPlan: Model<any>,
+    @InjectModel(Role.name) private readonly role: Model<any>,
+    @InjectModel(User.name) private readonly user: Model<any>,
     private readonly auth: AuthCryptoService,
     private readonly s3: S3Service,
     private readonly otp: OtpService,
@@ -44,21 +45,15 @@ export class PublicShopsService {
   // platform subscription. is_closed is a daily operational flag (today's
   // hours), not "not accepting members", so it isn't filtered out here.
   async listShops() {
-    const shops = await this.shop.findAll({
-      where: { is_active: true },
-      order: [['name', 'ASC']],
-    });
+    const shops = await this.shop.find({ is_active: true }).sort({ name: 1 });
     return Promise.all(shops.map((s) => this.serializeShop(s)));
   }
 
   async getShop(id: string) {
-    const shop: any = await this.shop.findOne({ where: { id, is_active: true } });
+    const shop: any = await this.shop.findOne({ _id: id, is_active: true });
     if (!shop) throw new AppError('Gym not found', 404);
 
-    const plans = await this.subscriptionPlan.findAll({
-      where: { shop_id: id, is_active: true },
-      order: [['sell_price', 'ASC']],
-    });
+    const plans = await this.subscriptionPlan.find({ shop_id: id, is_active: true }).sort({ sell_price: 1 });
 
     return { ...(await this.serializeShop(shop)), plans };
   }
@@ -67,7 +62,7 @@ export class PublicShopsService {
   // a signed-in session (token + user), same shape as /auth/login, so the
   // app can drop the new member straight into the dashboard.
   async registerMember(shopId: string, body: any) {
-    const shop: any = await this.shop.findOne({ where: { id: shopId, is_active: true } });
+    const shop: any = await this.shop.findOne({ _id: shopId, is_active: true });
     if (!shop) throw new AppError('Gym not found', 404);
 
     const { firstName, lastName, email, password, phone, gender } = body;
@@ -76,10 +71,10 @@ export class PublicShopsService {
     }
     if (String(password).length < 6) throw new AppError('Password must be at least 6 characters', 400);
 
-    const existing = await this.user.findOne({ where: { email } });
+    const existing = await this.user.findOne({ email });
     if (existing) throw new AppError('An account with this email already exists', 409);
 
-    const memberRole: any = await this.role.findOne({ where: { name: 'member' } });
+    const memberRole: any = await this.role.findOne({ name: 'member' });
     if (!memberRole) throw new AppError('Member role not configured', 500);
 
     const password_hash = await this.auth.hash(password);
@@ -93,7 +88,7 @@ export class PublicShopsService {
       phone: phone || null,
       gender: gender || null,
       status: 'active',
-    } as any);
+    });
 
     const token = this.auth.sign({
       id: user.id,
@@ -125,13 +120,13 @@ export class PublicShopsService {
   // Same as registerMember, but identity is proven by a verified Google ID
   // token instead of a password.
   async registerMemberWithGoogle(shopId: string, profile: GoogleProfile, body: any) {
-    const shop: any = await this.shop.findOne({ where: { id: shopId, is_active: true } });
+    const shop: any = await this.shop.findOne({ _id: shopId, is_active: true });
     if (!shop) throw new AppError('Gym not found', 404);
 
-    const existing = await this.user.findOne({ where: { email: profile.email } });
+    const existing = await this.user.findOne({ email: profile.email });
     if (existing) throw new AppError('An account with this email already exists', 409);
 
-    const memberRole: any = await this.role.findOne({ where: { name: 'member' } });
+    const memberRole: any = await this.role.findOne({ name: 'member' });
     if (!memberRole) throw new AppError('Member role not configured', 500);
 
     const { phone, gender } = body;
@@ -149,7 +144,7 @@ export class PublicShopsService {
       gender: gender || null,
       status: 'active',
       google_id: profile.googleId,
-    } as any);
+    });
 
     const token = this.auth.sign({
       id: user.id,
@@ -182,7 +177,7 @@ export class PublicShopsService {
   // ID token instead of a password. Email is still required (used as the
   // account's login identity); phone is the Firebase-verified number.
   async registerMemberWithPhone(shopId: string, body: any) {
-    const shop: any = await this.shop.findOne({ where: { id: shopId, is_active: true } });
+    const shop: any = await this.shop.findOne({ _id: shopId, is_active: true });
     if (!shop) throw new AppError('Gym not found', 404);
 
     const { idToken, firstName, lastName, email, gender } = body;
@@ -191,12 +186,12 @@ export class PublicShopsService {
     }
     const normalizedPhone = await this.firebaseAdmin.verifyPhoneToken(idToken);
 
-    const existingEmail = await this.user.findOne({ where: { email } });
+    const existingEmail = await this.user.findOne({ email });
     if (existingEmail) throw new AppError('An account with this email already exists', 409);
-    const existingPhone = await this.user.findOne({ where: { phone: normalizedPhone } });
+    const existingPhone = await this.user.findOne({ phone: normalizedPhone });
     if (existingPhone) throw new AppError('An account with this phone number already exists', 409);
 
-    const memberRole: any = await this.role.findOne({ where: { name: 'member' } });
+    const memberRole: any = await this.role.findOne({ name: 'member' });
     if (!memberRole) throw new AppError('Member role not configured', 500);
 
     const password_hash = await this.auth.hash(`passwordless:${randomUUID()}:${randomUUID()}`);
@@ -210,7 +205,7 @@ export class PublicShopsService {
       phone: normalizedPhone,
       gender: gender || null,
       status: 'active',
-    } as any);
+    });
 
     const token = this.auth.sign({
       id: user.id,
@@ -243,7 +238,7 @@ export class PublicShopsService {
   // instead of a password. Email is still required (used as the account's
   // login identity); phone is the OTP-verified number.
   async registerMemberWithWhatsApp(shopId: string, body: any) {
-    const shop: any = await this.shop.findOne({ where: { id: shopId, is_active: true } });
+    const shop: any = await this.shop.findOne({ _id: shopId, is_active: true });
     if (!shop) throw new AppError('Gym not found', 404);
 
     const { phone, code, firstName, lastName, email, gender } = body;
@@ -253,12 +248,12 @@ export class PublicShopsService {
     }
     const normalizedPhone = await this.otp.verifyAndConsume(phone, code);
 
-    const existingEmail = await this.user.findOne({ where: { email } });
+    const existingEmail = await this.user.findOne({ email });
     if (existingEmail) throw new AppError('An account with this email already exists', 409);
-    const existingPhone = await this.user.findOne({ where: { phone: normalizedPhone } });
+    const existingPhone = await this.user.findOne({ phone: normalizedPhone });
     if (existingPhone) throw new AppError('An account with this phone number already exists', 409);
 
-    const memberRole: any = await this.role.findOne({ where: { name: 'member' } });
+    const memberRole: any = await this.role.findOne({ name: 'member' });
     if (!memberRole) throw new AppError('Member role not configured', 500);
 
     const password_hash = await this.auth.hash(`passwordless:${randomUUID()}:${randomUUID()}`);
@@ -272,7 +267,7 @@ export class PublicShopsService {
       phone: normalizedPhone,
       gender: gender || null,
       status: 'active',
-    } as any);
+    });
 
     const token = this.auth.sign({
       id: user.id,

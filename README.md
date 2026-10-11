@@ -6,8 +6,8 @@ Multi-tenant gym management platform API built with NestJS. Powers the GymAxis m
 
 - **Runtime:** Node.js + TypeScript
 - **Framework:** NestJS 10
-- **Database:** PostgreSQL 15 (via Docker)
-- **ORM:** Sequelize 6 (sequelize-typescript)
+- **Database:** MongoDB 7, single-node replica set (via Docker)
+- **ODM:** Mongoose 8 (@nestjs/mongoose)
 - **Auth:** JWT + Google Sign-In + Firebase Phone Auth + WhatsApp OTP
 - **Payments:** Razorpay
 - **Storage:** AWS S3 (presigned URLs for uploads)
@@ -43,7 +43,7 @@ src/
 ├── app.module.ts              # Root module wiring
 ├── health.controller.ts       # GET /health
 ├── common/                    # Guards, decorators, interceptors, filters
-├── models/                    # Sequelize models + associations
+├── models/                    # Mongoose schemas + associations (virtual populates)
 ├── shared/                    # Global services (S3, mail, push, razorpay, cron, etc.)
 ├── auth/                      # Login, register, Google/Phone/WhatsApp auth, profile
 ├── platform/                  # Owner's platform subscription management
@@ -111,14 +111,17 @@ All routes are prefixed with `/api/v1/` (except `/health`).
 
 ## Setup
 
-### 1. Start PostgreSQL
+### 1. Start MongoDB
 
 ```bash
 cd /path/to/GYM_MAN
-docker compose up -d
+docker compose up -d mongo
 ```
 
-This starts a PostgreSQL 15 container (`gym_postgres`) on port 5432.
+This starts a MongoDB 7 container (`gym_mongo`) on port 27017 as a single-node
+replica set `rs0` (its healthcheck runs `rs.initiate()` on first start).
+A replica set is required: signup, payments and orders use multi-document
+transactions. Any replica set works (e.g. MongoDB Atlas). Point `MONGO_URI` at it.
 
 ### 2. Install dependencies
 
@@ -135,12 +138,9 @@ Copy `.env.example` or create `.env` with:
 PORT=5000
 NODE_ENV=development
 
-# Database
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=gym_management
-DB_USER=postgres
-DB_PASSWORD=postgres
+# Database (must be a replica set)
+MONGO_URI=mongodb://localhost:27017/gym_management?replicaSet=rs0
+MONGO_CONTAINER=gym_mongo   # container the backup cron runs mongodump in
 
 # Auth
 JWT_SECRET=your_jwt_secret
@@ -179,14 +179,14 @@ WHATSAPP_OTP_TEMPLATE_NAME=otp_verification
 FRONTEND_URL=http://localhost:5173
 ```
 
-### 4. Run migrations & seed
+### 4. Seed
 
 ```bash
-npm run db:migrate
 npm run db:seed
 ```
 
-This creates all tables and seeds demo data including:
+Collections and indexes are created automatically when the app (or the seed
+script) starts, so there are no migrations to run. This seeds demo data including:
 - Super admin: `super@platform.com` / `Password123!`
 - 2 demo gyms with owners, trainers, members, subscriptions, products, and attendance data
 
@@ -205,12 +205,19 @@ Server runs on `http://localhost:5000`.
 
 ## Database
 
-### Migrations
+### Schema & indexes
+
+Schemas live in `src/models/*.model.ts` (Mongoose). There are no migrations:
+collections are created on first use, and the indexes declared on the schemas
+(including the unique / partial-unique ones that make payment confirmation
+idempotent) are synced on every boot. Associations are Mongoose virtual
+populates named after the original include aliases (`Role`, `plan`, `member`,
+`days`, …), so API responses keep the same shape.
 
 ```bash
-npm run db:migrate          # Run all pending migrations
-npm run db:migrate:undo     # Undo all migrations
-npm run db:reset            # Undo + migrate + seed
+npm run db:seed             # Seed demo data
+npm run db:seed:undo        # Drop the database
+npm run db:reset            # Drop + seed
 ```
 
 ### Models
@@ -244,7 +251,7 @@ npm run db:reset            # Undo + migrate + seed
 | Schedule | Job | Description |
 |----------|-----|-------------|
 | `0 0 1 * * *` (12:01 AM) | Daily maintenance | Auto-close open check-ins, expire subscriptions, send expiry reminders |
-| `0 1 * * *` (1:00 AM) | Database backup | pg_dump + gzip, upload to S3 at `db/backups/` |
+| `0 1 * * *` (1:00 AM) | Database backup | mongodump (gzipped archive), upload to S3 at `db/backups/` |
 
 ## Database Backup & Restore
 
@@ -252,7 +259,7 @@ npm run db:reset            # Undo + migrate + seed
 
 Runs daily at 1:00 AM. Backup is uploaded to:
 ```
-s3://<bucket>/db/backups/gymaxis_DD_MM_YY.sql.gz
+s3://<bucket>/db/backups/gymaxis_DD_MM_YY.archive.gz
 ```
 
 ### Manual trigger
@@ -268,14 +275,10 @@ Or use the "Start Backup" button in the super-admin panel under Settings.
 
 ```bash
 # 1. Download the backup
-aws s3 cp s3://<bucket>/db/backups/gymaxis_DD_MM_YY.sql.gz ./backup.sql.gz
+aws s3 cp s3://<bucket>/db/backups/gymaxis_DD_MM_YY.archive.gz ./backup.archive.gz
 
-# 2. Drop and recreate the database
-docker exec gym_postgres psql -U postgres -c "DROP DATABASE gym_management;"
-docker exec gym_postgres psql -U postgres -c "CREATE DATABASE gym_management;"
-
-# 3. Restore
-gunzip -c backup.sql.gz | docker exec -i gym_postgres psql -U postgres -d gym_management
+# 2. Restore, replacing the current contents of each collection
+docker exec -i gym_mongo mongorestore --archive --gzip --drop < backup.archive.gz
 ```
 
 ## Super Admin Panel
@@ -308,15 +311,13 @@ Login: `super@platform.com` / `Password123!`
 | `npm run start` | Start (no watch) |
 | `npm run start:dev` | Start with hot reload |
 | `npm run start:prod` | Start compiled build |
-| `npm run db:migrate` | Run migrations |
-| `npm run db:migrate:undo` | Undo all migrations |
 | `npm run db:seed` | Seed demo data |
-| `npm run db:seed:undo` | Remove seeded data |
-| `npm run db:reset` | Full DB reset (undo + migrate + seed) |
+| `npm run db:seed:undo` | Drop the database |
+| `npm run db:reset` | Full DB reset (drop + seed) |
 
 ## Production Notes
 
-- Set `NODE_ENV=production` to enable SSL for database connections
+- For TLS / auth to MongoDB, put the options in `MONGO_URI` (e.g. `mongodb+srv://user:pass@cluster/gym_management` for Atlas)
 - The app uses Helmet with CSP disabled (for the inline super-admin panel)
 - Rate limiting: 30 requests/minute globally, stricter on auth endpoints
 - All API responses are wrapped in `{ success, message, data }` format

@@ -13,13 +13,13 @@ function randomReferralCode(length = 8): string {
   return out;
 }
 
-// Generates a code guaranteed unique against the shops table at this
+// Generates a code guaranteed unique against the shops collection at this
 // moment. Takes the Shop model itself (not injected) so it's callable from
 // any service without its own DI wiring.
-export async function generateUniqueReferralCode(shopModel: any, transaction?: any): Promise<string> {
+export async function generateUniqueReferralCode(shopModel: any, session?: any): Promise<string> {
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = randomReferralCode();
-    const existing = await shopModel.findOne({ where: { referral_code: code }, transaction });
+    const existing = await shopModel.findOne({ referral_code: code }).session(session ?? null);
     if (!existing) return code;
   }
   throw new AppError('Could not generate a unique referral code, please retry', 500);

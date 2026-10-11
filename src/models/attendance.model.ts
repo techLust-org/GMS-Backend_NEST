@@ -1,24 +1,14 @@
-import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
+import { defineSchema, T } from './schema-helpers';
 
-@Table({ tableName: 'attendance', underscored: true })
-export class Attendance extends Model {
-  @PrimaryKey
-  @Default(DataType.UUIDV4)
-  @Column(DataType.UUID)
-  id: string;
+export const AttendanceSchema = defineSchema('attendance', {
+  shop_id: T.uuid({ required: true }),
+  member_id: T.uuid({ required: true }),
+  attendance_date: T.dateOnly({ required: true }),
+  check_in_time: T.date({ required: true }),
+  check_out_time: T.date(),
+});
+AttendanceSchema.index({ member_id: 1, attendance_date: 1 }, { unique: true });
+AttendanceSchema.index({ attendance_date: 1 });
+AttendanceSchema.index({ shop_id: 1 });
 
-  @Column({ type: DataType.UUID, allowNull: false })
-  shop_id: string;
-
-  @Column({ type: DataType.UUID, allowNull: false })
-  member_id: string;
-
-  @Column({ type: DataType.DATEONLY, allowNull: false })
-  attendance_date: string;
-
-  @Column({ type: DataType.DATE, allowNull: false })
-  check_in_time: Date;
-
-  @Column(DataType.DATE)
-  check_out_time: Date;
-}
+export const Attendance = { name: 'Attendance', schema: AttendanceSchema };

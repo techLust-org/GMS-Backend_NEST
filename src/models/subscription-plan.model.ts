@@ -1,37 +1,17 @@
-import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
+import { defineSchema, T } from './schema-helpers';
 
 // Member-facing plans, defined per shop by the owner.
-@Table({ tableName: 'subscription_plans', underscored: true })
-export class SubscriptionPlan extends Model {
-  @PrimaryKey
-  @Default(DataType.UUIDV4)
-  @Column(DataType.UUID)
-  id: string;
+export const SubscriptionPlanSchema = defineSchema('subscription_plans', {
+  shop_id: T.uuid({ required: true }),
+  name: T.string({ required: true }),
+  duration: T.enumOf(['monthly', 'quarterly', 'yearly'], { required: true }),
+  duration_days: T.int({ required: true }),
+  base_price: T.decimal({ required: true }),
+  discount: T.decimal({ required: true, default: 0 }),
+  sell_price: T.decimal({ required: true }),
+  description: T.text(),
+  is_active: T.bool({ default: true }),
+});
+SubscriptionPlanSchema.index({ shop_id: 1 });
 
-  @Column({ type: DataType.UUID, allowNull: false })
-  shop_id: string;
-
-  @Column({ type: DataType.STRING(100), allowNull: false })
-  name: string;
-
-  @Column({ type: DataType.ENUM('monthly', 'quarterly', 'yearly'), allowNull: false })
-  duration: string;
-
-  @Column({ type: DataType.INTEGER, allowNull: false })
-  duration_days: number;
-
-  @Column({ type: DataType.DECIMAL(10, 2), allowNull: false })
-  base_price: number;
-
-  @Column({ type: DataType.DECIMAL(10, 2), allowNull: false, defaultValue: 0 })
-  discount: number;
-
-  @Column({ type: DataType.DECIMAL(10, 2), allowNull: false })
-  sell_price: number;
-
-  @Column(DataType.TEXT)
-  description: string;
-
-  @Column({ type: DataType.BOOLEAN, defaultValue: true })
-  is_active: boolean;
-}
+export const SubscriptionPlan = { name: 'SubscriptionPlan', schema: SubscriptionPlanSchema };

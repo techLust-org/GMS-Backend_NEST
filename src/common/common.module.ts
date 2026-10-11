@@ -1,7 +1,5 @@
 import { Global, Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
-import { SequelizeModule } from '@nestjs/sequelize';
-import { ShopSubscription } from '../models';
 import { AuthCryptoService } from './auth-crypto.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
@@ -23,7 +21,6 @@ import { ActiveShopGuard } from './guards/active-shop.guard';
       signOptions: { expiresIn: process.env.JWT_EXPIRES_IN || '7d', algorithm: 'HS256' },
       verifyOptions: { algorithms: ['HS256'] },
     }),
-    SequelizeModule.forFeature([ShopSubscription]),
   ],
   providers: [AuthCryptoService, JwtAuthGuard, RolesGuard, TenantGuard, ActiveShopGuard],
   exports: [
@@ -33,7 +30,6 @@ import { ActiveShopGuard } from './guards/active-shop.guard';
     RolesGuard,
     TenantGuard,
     ActiveShopGuard,
-    SequelizeModule,
   ],
 })
 export class CommonModule {}

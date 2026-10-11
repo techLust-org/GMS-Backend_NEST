@@ -1,37 +1,24 @@
-import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
+import { defineSchema, T } from './schema-helpers';
 
 // A shop's subscription to the platform (owner pays us).
-@Table({ tableName: 'shop_subscriptions', underscored: true })
-export class ShopSubscription extends Model {
-  @PrimaryKey
-  @Default(DataType.UUIDV4)
-  @Column(DataType.UUID)
-  id: string;
+export const ShopSubscriptionSchema = defineSchema('shop_subscriptions', {
+  shop_id: T.uuid({ required: true }),
+  plan_id: T.uuid({ required: true }),
+  base_price: T.decimal({ required: true }),
+  sell_price: T.decimal({ required: true }),
+  start_date: T.dateOnly({ required: true }),
+  end_date: T.dateOnly({ required: true }),
+  status: T.enumOf(['active', 'expired', 'cancelled', 'pending'], { default: 'active' }),
+  razorpay_order_id: T.string(),
+  razorpay_payment_id: T.string(),
+});
+ShopSubscriptionSchema.index({ shop_id: 1, status: 1 });
+ShopSubscriptionSchema.index({ plan_id: 1 });
+// Idempotency guardrail: one Razorpay payment can back at most one
+// subscription, even under concurrent duplicate submissions.
+ShopSubscriptionSchema.index(
+  { razorpay_payment_id: 1 },
+  { unique: true, partialFilterExpression: { razorpay_payment_id: { $type: 'string' } } },
+);
 
-  @Column({ type: DataType.UUID, allowNull: false })
-  shop_id: string;
-
-  @Column({ type: DataType.UUID, allowNull: false })
-  plan_id: string;
-
-  @Column({ type: DataType.DECIMAL(10, 2), allowNull: false })
-  base_price: number;
-
-  @Column({ type: DataType.DECIMAL(10, 2), allowNull: false })
-  sell_price: number;
-
-  @Column({ type: DataType.DATEONLY, allowNull: false })
-  start_date: string;
-
-  @Column({ type: DataType.DATEONLY, allowNull: false })
-  end_date: string;
-
-  @Column({ type: DataType.ENUM('active', 'expired', 'cancelled', 'pending'), defaultValue: 'active' })
-  status: string;
-
-  @Column(DataType.STRING)
-  razorpay_order_id: string;
-
-  @Column(DataType.STRING)
-  razorpay_payment_id: string;
-}
+export const ShopSubscription = { name: 'ShopSubscription', schema: ShopSubscriptionSchema };

@@ -1,35 +1,19 @@
-import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
+import { defineSchema, T } from './schema-helpers';
 
 // Server-resolved record of what a Razorpay order was actually created for.
 // The confirm step (purchase/activate) must read the grant details back
 // from here — never re-trust a client-resubmitted planId/items/amount at
 // that point, since the payment signature alone doesn't prove they match
 // what was paid for.
-@Table({ tableName: 'pending_payments', underscored: true })
-export class PendingPayment extends Model {
-  @PrimaryKey
-  @Default(DataType.UUIDV4)
-  @Column(DataType.UUID)
-  id: string;
+export const PendingPaymentSchema = defineSchema('pending_payments', {
+  shop_id: T.uuid({ required: true }),
+  user_id: T.uuid(),
+  kind: T.string({ required: true }),
+  razorpay_order_id: T.string({ required: true }),
+  amount: T.decimal({ required: true }),
+  payload: T.json({ required: true }),
+  consumed_at: T.date(),
+});
+PendingPaymentSchema.index({ razorpay_order_id: 1 }, { unique: true });
 
-  @Column({ type: DataType.UUID, allowNull: false })
-  shop_id: string;
-
-  @Column(DataType.UUID)
-  user_id: string;
-
-  @Column({ type: DataType.STRING(30), allowNull: false })
-  kind: string;
-
-  @Column({ type: DataType.STRING, allowNull: false, unique: true })
-  razorpay_order_id: string;
-
-  @Column({ type: DataType.DECIMAL(10, 2), allowNull: false })
-  amount: number;
-
-  @Column({ type: DataType.JSONB, allowNull: false })
-  payload: object;
-
-  @Column(DataType.DATE)
-  consumed_at: Date;
-}
+export const PendingPayment = { name: 'PendingPayment', schema: PendingPaymentSchema };

@@ -1,52 +1,28 @@
-import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
+import { defineSchema, T } from './schema-helpers';
 
-@Table({ tableName: 'product_sales', underscored: true })
-export class ProductSale extends Model {
-  @PrimaryKey
-  @Default(DataType.UUIDV4)
-  @Column(DataType.UUID)
-  id: string;
+export const ProductSaleSchema = defineSchema('product_sales', {
+  shop_id: T.uuid({ required: true }),
+  product_id: T.uuid({ required: true }),
+  member_id: T.uuid(),
+  quantity: T.int({ default: 1 }),
+  unit_price: T.decimal({ required: true }),
+  total_price: T.decimal({ required: true }),
+  order_mode: T.enumOf(['offline', 'online'], { default: 'offline' }),
+  payment_mode: T.enumOf(['cash', 'upi', 'card', 'razorpay'], { default: 'cash' }),
+  transaction_id: T.string(),
+  order_id: T.string(),
+  sold_by: T.uuid(),
+  sale_date: T.dateOnly(),
+  status: T.enumOf(['pending', 'shipped', 'delivered', 'cancelled'], { required: true, default: 'pending' }),
+});
+ProductSaleSchema.index({ shop_id: 1 });
+ProductSaleSchema.index({ product_id: 1 });
+ProductSaleSchema.index({ sale_date: 1 });
+// Idempotency guardrail: an order's line items can only be recorded once,
+// even under concurrent duplicate purchase confirmations.
+ProductSaleSchema.index(
+  { order_id: 1, product_id: 1 },
+  { unique: true, partialFilterExpression: { order_id: { $type: 'string' } } },
+);
 
-  @Column({ type: DataType.UUID, allowNull: false })
-  shop_id: string;
-
-  @Column({ type: DataType.UUID, allowNull: false })
-  product_id: string;
-
-  @Column(DataType.UUID)
-  member_id: string;
-
-  @Column({ type: DataType.INTEGER, defaultValue: 1 })
-  quantity: number;
-
-  @Column({ type: DataType.DECIMAL(10, 2), allowNull: false })
-  unit_price: number;
-
-  @Column({ type: DataType.DECIMAL(10, 2), allowNull: false })
-  total_price: number;
-
-  @Column({ type: DataType.ENUM('offline', 'online'), defaultValue: 'offline' })
-  order_mode: string;
-
-  @Column({ type: DataType.ENUM('cash', 'upi', 'card', 'razorpay'), defaultValue: 'cash' })
-  payment_mode: string;
-
-  @Column(DataType.STRING)
-  transaction_id: string;
-
-  @Column(DataType.STRING)
-  order_id: string;
-
-  @Column(DataType.UUID)
-  sold_by: string;
-
-  @Column(DataType.DATEONLY)
-  sale_date: string;
-
-  @Column({
-    type: DataType.ENUM('pending', 'shipped', 'delivered', 'cancelled'),
-    allowNull: false,
-    defaultValue: 'pending',
-  })
-  status: string;
-}
+export const ProductSale = { name: 'ProductSale', schema: ProductSaleSchema };

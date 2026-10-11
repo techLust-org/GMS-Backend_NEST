@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/sequelize';
-import { Op } from 'sequelize';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { Response } from 'express';
 import { stringify } from 'csv-stringify';
 import PDFDocument from 'pdfkit';
-import { Expense, ExpenseCategory, User } from '../../models';
+import { Expense, ExpenseCategory } from '../../models';
 import { FinancialService as FinancialReportService } from '../../shared/financial.service';
 import { LedgerService } from '../../shared/ledger.service';
 import { AppError } from '../../common/app-error';
@@ -13,8 +13,8 @@ import { ApiPayload } from '../../common/api-payload';
 @Injectable()
 export class AdminFinancialService {
   constructor(
-    @InjectModel(Expense) private readonly expense: typeof Expense,
-    @InjectModel(ExpenseCategory) private readonly expenseCategory: typeof ExpenseCategory,
+    @InjectModel(Expense.name) private readonly expense: Model<any>,
+    @InjectModel(ExpenseCategory.name) private readonly expenseCategory: Model<any>,
     private readonly financial: FinancialReportService,
     private readonly ledger: LedgerService,
   ) {}
@@ -46,21 +46,23 @@ export class AdminFinancialService {
     if (year && month) {
       const start = `${year}-${String(month).padStart(2, '0')}-01`;
       const end = new Date(year, month, 0).toISOString().split('T')[0];
-      where.expense_date = { [Op.between]: [start, end] };
+      where.expense_date = { $gte: start, $lte: end };
     } else if (year) {
-      where.expense_date = { [Op.between]: [`${year}-01-01`, `${year}-12-31`] };
+      where.expense_date = { $gte: `${year}-01-01`, $lte: `${year}-12-31` };
     }
     const offset = (page - 1) * limit;
-    const { count, rows } = await this.expense.findAndCountAll({
-      where,
-      include: [
-        { model: ExpenseCategory, as: 'category', attributes: ['id', 'name', 'type'] },
-        { model: User, as: 'trainer', attributes: ['id', 'first_name', 'last_name'] },
-      ],
-      order: [['expense_date', 'DESC'], ['created_at', 'DESC']],
-      limit: parseInt(limit),
-      offset: parseInt(String(offset), 10),
-    });
+    const [count, rows] = await Promise.all([
+      this.expense.countDocuments(where),
+      this.expense
+        .find(where)
+        .populate([
+          { path: 'category', select: 'name type' },
+          { path: 'trainer', select: 'first_name last_name' },
+        ])
+        .sort({ expense_date: -1, createdAt: -1 })
+        .skip(parseInt(String(offset), 10))
+        .limit(parseInt(limit)),
+    ]);
     return new ApiPayload(rows, 'Expenses fetched', { total: count, page: +page, limit: +limit });
   }
 
@@ -70,15 +72,14 @@ export class AdminFinancialService {
 
     const where: any = {
       shop_id: shopId,
-      expense_date: { [Op.between]: [startDate, endDate] },
+      expense_date: { $gte: startDate, $lte: endDate },
     };
     if (categoryId) where.category_id = categoryId;
 
-    const rows: any[] = await this.expense.findAll({
-      where,
-      include: [{ model: ExpenseCategory, as: 'category', attributes: ['id', 'name', 'type'] }],
-      order: [['expense_date', 'ASC'], ['created_at', 'ASC']],
-    });
+    const rows: any[] = await this.expense
+      .find(where)
+      .populate({ path: 'category', select: 'name type' })
+      .sort({ expense_date: 1, createdAt: 1 });
 
     const filename = `ledger_${startDate}_to_${endDate}`;
     if (format === 'pdf') {
@@ -175,7 +176,7 @@ export class AdminFinancialService {
     const { categoryId, description, amount, expenseDate, paidTo, trainerId, invoiceUrl } = body;
     if (!categoryId || !description || !amount) throw new AppError('Category, description and amount required', 400);
 
-    const category: any = await this.expenseCategory.findOne({ where: { id: categoryId, shop_id: shopId } });
+    const category: any = await this.expenseCategory.findOne({ _id: categoryId, shop_id: shopId });
     if (!category) throw new AppError('Invalid expense category', 400);
 
     const expense: any = await this.expense.create({
@@ -187,7 +188,7 @@ export class AdminFinancialService {
       paid_to: paidTo,
       trainer_id: trainerId || null,
       invoice_url: invoiceUrl,
-    } as any);
+    });
 
     await this.ledger.record({
       shopId,
@@ -202,12 +203,12 @@ export class AdminFinancialService {
   }
 
   async updateExpense(shopId: string, id: string, body: any) {
-    const expense: any = await this.expense.findOne({ where: { id, shop_id: shopId } });
+    const expense: any = await this.expense.findOne({ _id: id, shop_id: shopId });
     if (!expense) throw new AppError('Expense not found', 404);
     const { categoryId, description, amount, expenseDate, paidTo, invoiceUrl } = body;
     let category: any = null;
     if (categoryId) {
-      category = await this.expenseCategory.findOne({ where: { id: categoryId, shop_id: shopId } });
+      category = await this.expenseCategory.findOne({ _id: categoryId, shop_id: shopId });
       if (!category) throw new AppError('Invalid expense category', 400);
     }
 
@@ -215,20 +216,20 @@ export class AdminFinancialService {
       shopId, reference: 'expense', referenceId: expense.id,
     });
 
-    await expense.update({
+    await expense.set({
       category_id: categoryId || expense.category_id,
       description: description || expense.description,
       amount: amount || expense.amount,
       expense_date: expenseDate || expense.expense_date,
       paid_to: paidTo !== undefined ? paidTo : expense.paid_to,
       invoice_url: invoiceUrl !== undefined ? invoiceUrl : expense.invoice_url,
-    });
+    }).save();
 
     if (!ownsLedgerEntry) {
       return new ApiPayload(expense, 'Transaction updated');
     }
 
-    if (!category) category = await this.expenseCategory.findByPk(expense.category_id);
+    if (!category) category = await this.expenseCategory.findById(expense.category_id);
     await this.ledger.removeByReference({ shopId, reference: 'expense', referenceId: expense.id });
     await this.ledger.record({
       shopId,
@@ -243,10 +244,10 @@ export class AdminFinancialService {
   }
 
   async deleteExpense(shopId: string, id: string) {
-    const expense: any = await this.expense.findOne({ where: { id, shop_id: shopId } });
+    const expense: any = await this.expense.findOne({ _id: id, shop_id: shopId });
     if (!expense) throw new AppError('Expense not found', 404);
     await this.ledger.removeByReference({ shopId, reference: 'expense', referenceId: expense.id });
-    await expense.destroy();
+    await expense.deleteOne();
     return new ApiPayload(null, 'Transaction deleted');
   }
 }

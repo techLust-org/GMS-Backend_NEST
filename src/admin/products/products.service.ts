@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/sequelize';
-import { Op } from 'sequelize';
-import { Product, ProductSale, Payment, User, Expense, ExpenseCategory } from '../../models';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { Product, ProductSale, Payment, Expense, ExpenseCategory } from '../../models';
 import { LedgerService } from '../../shared/ledger.service';
 import { AppError } from '../../common/app-error';
 import { ApiPayload } from '../../common/api-payload';
@@ -9,11 +9,11 @@ import { ApiPayload } from '../../common/api-payload';
 @Injectable()
 export class ProductsService {
   constructor(
-    @InjectModel(Product) private readonly product: typeof Product,
-    @InjectModel(ProductSale) private readonly productSale: typeof ProductSale,
-    @InjectModel(Payment) private readonly payment: typeof Payment,
-    @InjectModel(Expense) private readonly expense: typeof Expense,
-    @InjectModel(ExpenseCategory) private readonly expenseCategory: typeof ExpenseCategory,
+    @InjectModel(Product.name) private readonly product: Model<any>,
+    @InjectModel(ProductSale.name) private readonly productSale: Model<any>,
+    @InjectModel(Payment.name) private readonly payment: Model<any>,
+    @InjectModel(Expense.name) private readonly expense: Model<any>,
+    @InjectModel(ExpenseCategory.name) private readonly expenseCategory: Model<any>,
     private readonly ledger: LedgerService,
   ) {}
 
@@ -24,10 +24,11 @@ export class ProductsService {
     const amount = costPrice * quantityAdded;
     if (amount <= 0) return;
 
-    const [category]: any = await this.expenseCategory.findOrCreate({
-      where: { shop_id: shopId, name: 'Product Cost', type: 'debit' },
-      defaults: { shop_id: shopId, name: 'Product Cost', type: 'debit' } as any,
-    });
+    const category: any = await this.expenseCategory.findOneAndUpdate(
+      { shop_id: shopId, name: 'Product Cost', type: 'debit' },
+      { $setOnInsert: { shop_id: shopId, name: 'Product Cost', type: 'debit' } },
+      { upsert: true, new: true },
+    );
 
     const expenseDate = new Date().toISOString().split('T')[0];
     const expense: any = await this.expense.create({
@@ -36,7 +37,7 @@ export class ProductsService {
       description: `${quantityAdded} × ${product.name} restocked (cost ₹${costPrice.toFixed(0)}, sell ₹${parseFloat(product.sell_price).toFixed(0)} each)`,
       amount,
       expense_date: expenseDate,
-    } as any);
+    });
 
     await this.ledger.record({
       shopId, type: 'debit', amount, reference: 'expense', referenceId: expense.id, entryDate: expenseDate,
@@ -51,7 +52,7 @@ export class ProductsService {
     if (lowStock === 'true') {
       // stock_qty <= low_stock_threshold is a column-to-column comparison,
       // so filter in memory rather than pushing it into the WHERE clause.
-      const products: any[] = await this.product.findAll({ where, order: [['name', 'ASC']] });
+      const products: any[] = await this.product.find(where).sort({ name: 1 });
       const filtered = products.filter((p) => p.stock_qty <= p.low_stock_threshold);
       const offset = (page - 1) * limit;
       const rows = filtered.slice(offset, offset + Number(limit));
@@ -59,12 +60,14 @@ export class ProductsService {
     }
 
     const offset = (page - 1) * limit;
-    const { count, rows } = await this.product.findAndCountAll({
-      where,
-      order: [['name', 'ASC']],
-      limit: parseInt(limit),
-      offset: parseInt(String(offset), 10),
-    });
+    const [count, rows] = await Promise.all([
+      this.product.countDocuments(where),
+      this.product
+        .find(where)
+        .sort({ name: 1 })
+        .skip(parseInt(String(offset), 10))
+        .limit(parseInt(limit)),
+    ]);
     return new ApiPayload(rows, 'Products fetched', { total: count, page: +page, limit: +limit });
   }
 
@@ -82,22 +85,21 @@ export class ProductsService {
       category, sku,
       photo_url: photoUrl,
       low_stock_threshold: lowStockThreshold || 5,
-    } as any);
+    });
     await this.recordStockExpense(shopId, product, product.stock_qty);
     return new ApiPayload(product, 'Product created');
   }
 
   async get(shopId: string, id: string) {
-    const product = await this.product.findOne({
-      where: { id, shop_id: shopId },
-      include: [{ model: ProductSale, as: 'sales', limit: 10, order: [['created_at', 'DESC']] }],
-    });
+    const product = await this.product
+      .findOne({ _id: id, shop_id: shopId })
+      .populate({ path: 'sales', options: { sort: { createdAt: -1 }, perDocumentLimit: 10 } });
     if (!product) throw new AppError('Product not found', 404);
     return product;
   }
 
   async update(shopId: string, id: string, body: any) {
-    const product: any = await this.product.findOne({ where: { id, shop_id: shopId } });
+    const product: any = await this.product.findOne({ _id: id, shop_id: shopId });
     if (!product) throw new AppError('Product not found', 404);
     const { name, description, costPrice, discount, sellPrice, category, sku,
       stockQty, photoUrl, lowStockThreshold, isActive } = body;
@@ -105,7 +107,7 @@ export class ProductsService {
     const oldStockQty = product.stock_qty;
     const newStockQty = stockQty !== undefined ? parseInt(stockQty) : product.stock_qty;
 
-    await product.update({
+    await product.set({
       name: name || product.name,
       description: description !== undefined ? description : product.description,
       cost_price: costPrice !== undefined ? costPrice : product.cost_price,
@@ -117,7 +119,7 @@ export class ProductsService {
       photo_url: photoUrl !== undefined ? photoUrl : product.photo_url,
       low_stock_threshold: lowStockThreshold || product.low_stock_threshold,
       is_active: isActive !== undefined ? isActive : product.is_active,
-    });
+    }).save();
 
     const delta = newStockQty - oldStockQty;
     if (delta > 0) await this.recordStockExpense(shopId, product, delta);
@@ -126,26 +128,26 @@ export class ProductsService {
   }
 
   async remove(shopId: string, id: string) {
-    const product: any = await this.product.findOne({ where: { id, shop_id: shopId } });
+    const product: any = await this.product.findOne({ _id: id, shop_id: shopId });
     if (!product) throw new AppError('Product not found', 404);
-    await product.update({ is_active: false });
+    await product.set({ is_active: false }).save();
     return new ApiPayload(null, 'Product deleted');
   }
 
   async restock(shopId: string, id: string, body: any) {
-    const product: any = await this.product.findOne({ where: { id, shop_id: shopId } });
+    const product: any = await this.product.findOne({ _id: id, shop_id: shopId });
     if (!product) throw new AppError('Product not found', 404);
     const { quantity } = body;
     if (!quantity || quantity < 1) throw new AppError('Valid quantity required', 400);
     const qty = parseInt(quantity);
-    await product.update({ stock_qty: product.stock_qty + qty });
+    await product.set({ stock_qty: product.stock_qty + qty }).save();
     await this.recordStockExpense(shopId, product, qty);
     return new ApiPayload(product, 'Stock updated');
   }
 
   async recordSale(shopId: string, userId: string, body: any) {
     const { productId, memberId, quantity = 1, paymentMode = 'cash', orderMode = 'offline', transactionId } = body;
-    const product: any = await this.product.findOne({ where: { id: productId, shop_id: shopId } });
+    const product: any = await this.product.findOne({ _id: productId, shop_id: shopId });
     if (!product) throw new AppError('Product not found', 404);
     if (product.stock_qty < quantity) throw new AppError('Insufficient stock', 400);
 
@@ -164,9 +166,9 @@ export class ProductsService {
       sold_by: userId,
       sale_date: new Date().toISOString().split('T')[0],
       status,
-    } as any);
+    });
 
-    await product.update({ stock_qty: product.stock_qty - quantity });
+    await product.set({ stock_qty: product.stock_qty - quantity }).save();
 
     if (memberId) {
       await this.payment.create({
@@ -176,7 +178,7 @@ export class ProductsService {
         amount: total_price,
         payment_date: new Date().toISOString().split('T')[0],
         payment_method: paymentMode,
-      } as any);
+      });
     }
 
     await this.ledger.record({
@@ -196,16 +198,15 @@ export class ProductsService {
     if (productId) where.product_id = productId;
     if (from || to) {
       where.sale_date = {};
-      if (from) where.sale_date[Op.gte] = from;
-      if (to) where.sale_date[Op.lte] = to;
+      if (from) where.sale_date.$gte = from;
+      if (to) where.sale_date.$lte = to;
     }
-    return this.productSale.findAll({
-      where,
-      include: [
-        { model: Product, as: 'product', attributes: ['id', 'name', 'category'] },
-        { model: User, as: 'buyer', attributes: ['id', 'first_name', 'last_name'] },
-      ],
-      order: [['created_at', 'DESC']],
-    });
+    return this.productSale
+      .find(where)
+      .populate([
+        { path: 'product', select: 'name category' },
+        { path: 'buyer', select: 'first_name last_name' },
+      ])
+      .sort({ createdAt: -1 });
   }
 }

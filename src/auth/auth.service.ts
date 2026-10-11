@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { InjectModel, InjectConnection } from '@nestjs/sequelize';
-import { Sequelize } from 'sequelize-typescript';
+import { InjectModel, InjectConnection } from '@nestjs/mongoose';
+import { ClientSession, Connection, Model } from 'mongoose';
 import { randomUUID } from 'crypto';
 import { User, Role, Shop, Referral } from '../models';
 import { AuthCryptoService } from '../common/auth-crypto.service';
 import { AppError } from '../common/app-error';
 import { ApiPayload } from '../common/api-payload';
 import { generateUniqueReferralCode } from '../common/referral-code';
+import { withTransaction } from '../database/db-utils';
 import { S3Service } from '../shared/s3.service';
 import { OtpService } from '../shared/otp.service';
 import { FirebaseAdminService } from '../shared/firebase-admin.service';
@@ -15,11 +16,11 @@ import { GoogleProfile } from './google-token.strategy';
 @Injectable()
 export class AuthService {
   constructor(
-    @InjectModel(User) private readonly user: typeof User,
-    @InjectModel(Role) private readonly role: typeof Role,
-    @InjectModel(Shop) private readonly shop: typeof Shop,
-    @InjectModel(Referral) private readonly referral: typeof Referral,
-    @InjectConnection() private readonly sequelize: Sequelize,
+    @InjectModel(User.name) private readonly user: Model<any>,
+    @InjectModel(Role.name) private readonly role: Model<any>,
+    @InjectModel(Shop.name) private readonly shop: Model<any>,
+    @InjectModel(Referral.name) private readonly referral: Model<any>,
+    @InjectConnection() private readonly connection: Connection,
     private readonly auth: AuthCryptoService,
     private readonly s3: S3Service,
     private readonly otp: OtpService,
@@ -35,20 +36,18 @@ export class AuthService {
   private async resolveReferrer(
     referralCode: string | undefined | null,
     registrantPhone: string | undefined | null,
-    t: any,
+    session: ClientSession,
   ): Promise<any> {
     if (!referralCode) return null;
-    const referrerShop: any = await this.shop.findOne({
-      where: { referral_code: referralCode.trim().toUpperCase() },
-      transaction: t,
-    });
+    const referrerShop: any = await this.shop
+      .findOne({ referral_code: referralCode.trim().toUpperCase() })
+      .session(session);
     if (!referrerShop) return null;
 
     if (registrantPhone) {
-      const referrerOwner: any = await this.user.findOne({
-        where: { id: referrerShop.owner_id },
-        transaction: t,
-      });
+      const referrerOwner: any = await this.user
+        .findOne({ _id: referrerShop.owner_id })
+        .session(session);
       if (referrerOwner?.phone && referrerOwner.phone === registrantPhone) return null;
     }
     return referrerShop;
@@ -61,9 +60,9 @@ export class AuthService {
     shopId: string | null | undefined,
   ): Promise<{ name: string | null; logoUrl: string | null; themeColor: string | null; isClosed: boolean }> {
     if (!shopId) return { name: null, logoUrl: null, themeColor: null, isClosed: false };
-    const shop: any = await this.shop.findByPk(shopId, {
-      attributes: ['name', 'logo_url', 'theme_color', 'is_closed'],
-    });
+    const shop: any = await this.shop
+      .findById(shopId)
+      .select('name logo_url theme_color is_closed');
     return {
       name: shop?.name ?? null,
       logoUrl: shop?.logo_url ? await this.s3.getViewUrl(shop.logo_url) : null,
@@ -103,10 +102,10 @@ export class AuthService {
     const { email, password } = body;
     if (!email || !password) throw new AppError('Email and password required', 400);
 
-    const user: any = await this.user.scope('withPassword').findOne({
-      where: { email },
-      include: [{ model: Role, attributes: ['name'] }],
-    });
+    const user: any = await this.user
+      .findOne({ email })
+      .select('+password_hash')
+      .populate({ path: 'Role', select: 'name -_id' });
 
     if (!user) throw new AppError('Invalid credentials', 401);
     if (user.status !== 'active') throw new AppError('Account is inactive or suspended', 403);
@@ -141,10 +140,9 @@ export class AuthService {
   // No account is created; see registerOwnerWithGoogle / PublicShopsService
   // .registerMemberWithGoogle for the two Google-based signup paths.
   async loginWithGoogle(profile: GoogleProfile) {
-    const user: any = await this.user.findOne({
-      where: { email: profile.email },
-      include: [{ model: Role, attributes: ['name'] }],
-    });
+    const user: any = await this.user
+      .findOne({ email: profile.email })
+      .populate({ path: 'Role', select: 'name -_id' });
 
     if (!user) {
       throw new AppError(
@@ -157,7 +155,7 @@ export class AuthService {
     if (!user.google_id) {
       // First time this existing (password-based) account signs in with
       // Google — link it so future sign-ins are instant.
-      await user.update({ google_id: profile.googleId });
+      await user.set({ google_id: profile.googleId }).save();
     }
 
     const token = this.auth.sign({
@@ -174,60 +172,50 @@ export class AuthService {
   }
 
   async registerOwner(body: any) {
-    const t = await this.sequelize.transaction();
-    try {
-      const { firstName, lastName, email, password, shopName, shopPhone, shopEmail, referralCode } = body;
-      if (!firstName || !lastName || !email || !password || !shopName) {
-        throw new AppError('firstName, lastName, email, password and shopName are required', 400);
-      }
-      if (String(password).length < 6) throw new AppError('Password must be at least 6 characters', 400);
+    const { firstName, lastName, email, password, shopName, shopPhone, shopEmail, referralCode } = body;
+    if (!firstName || !lastName || !email || !password || !shopName) {
+      throw new AppError('firstName, lastName, email, password and shopName are required', 400);
+    }
+    if (String(password).length < 6) throw new AppError('Password must be at least 6 characters', 400);
 
-      const existing = await this.user.findOne({ where: { email }, transaction: t });
+    return withTransaction(this.connection, async (session) => {
+      const existing = await this.user.findOne({ email }).session(session);
       if (existing) throw new AppError('An account with this email already exists', 409);
 
-      const adminRole = await this.role.findOne({ where: { name: 'admin' }, transaction: t });
+      const adminRole = await this.role.findOne({ name: 'admin' }).session(session);
       if (!adminRole) throw new AppError('Admin role not configured', 500);
 
-      const referrerShop = await this.resolveReferrer(referralCode, shopPhone, t);
+      const referrerShop = await this.resolveReferrer(referralCode, shopPhone, session);
 
       const password_hash = await this.auth.hash(password);
-      const owner: any = await this.user.create(
-        {
-          role_id: adminRole.id,
-          first_name: firstName,
-          last_name: lastName,
-          email,
-          password_hash,
-          phone: shopPhone || null,
-          status: 'active',
-        } as any,
-        { transaction: t },
-      );
+      const owner: any = await new this.user({
+        role_id: adminRole.id,
+        first_name: firstName,
+        last_name: lastName,
+        email,
+        password_hash,
+        phone: shopPhone || null,
+        status: 'active',
+      }).save({ session });
 
-      const newReferralCode = await generateUniqueReferralCode(this.shop, t);
-      const shop: any = await this.shop.create(
-        {
-          name: shopName,
-          owner_id: owner.id,
-          phone: shopPhone || null,
-          email: shopEmail || email,
-          is_active: false,
-          referral_code: newReferralCode,
-          referred_by_shop_id: referrerShop?.id ?? null,
-        } as any,
-        { transaction: t },
-      );
+      const newReferralCode = await generateUniqueReferralCode(this.shop, session);
+      const shop: any = await new this.shop({
+        name: shopName,
+        owner_id: owner.id,
+        phone: shopPhone || null,
+        email: shopEmail || email,
+        is_active: false,
+        referral_code: newReferralCode,
+        referred_by_shop_id: referrerShop?.id ?? null,
+      }).save({ session });
 
-      await owner.update({ shop_id: shop.id }, { transaction: t });
+      await owner.set({ shop_id: shop.id }).save({ session });
 
       if (referrerShop) {
-        await this.referral.create(
-          { referrer_shop_id: referrerShop.id, referred_shop_id: shop.id, status: 'pending' } as any,
-          { transaction: t },
-        );
+        await new this.referral({
+          referrer_shop_id: referrerShop.id, referred_shop_id: shop.id, status: 'pending',
+        }).save({ session });
       }
-
-      await t.commit();
 
       const token = this.auth.sign({
         id: owner.id,
@@ -251,68 +239,55 @@ export class AuthService {
         },
         'Account created',
       );
-    } catch (err) {
-      await t.rollback();
-      throw err;
-    }
+    });
   }
 
   // Same as registerOwner, but identity is proven by a verified Google ID
   // token instead of a password — only shopName/shopPhone are still needed
   // from the client.
   async registerOwnerWithGoogle(profile: GoogleProfile, body: any) {
-    const t = await this.sequelize.transaction();
-    try {
-      const { shopName, shopPhone, shopEmail, referralCode } = body;
-      if (!shopName) throw new AppError('shopName is required', 400);
+    const { shopName, shopPhone, shopEmail, referralCode } = body;
+    if (!shopName) throw new AppError('shopName is required', 400);
 
-      const existing = await this.user.findOne({ where: { email: profile.email }, transaction: t });
+    return withTransaction(this.connection, async (session) => {
+      const existing = await this.user.findOne({ email: profile.email }).session(session);
       if (existing) throw new AppError('An account with this email already exists', 409);
 
-      const adminRole = await this.role.findOne({ where: { name: 'admin' }, transaction: t });
+      const adminRole = await this.role.findOne({ name: 'admin' }).session(session);
       if (!adminRole) throw new AppError('Admin role not configured', 500);
 
-      const referrerShop = await this.resolveReferrer(referralCode, shopPhone, t);
+      const referrerShop = await this.resolveReferrer(referralCode, shopPhone, session);
 
       const password_hash = await this.unusablePasswordHash();
-      const owner: any = await this.user.create(
-        {
-          role_id: adminRole.id,
-          first_name: profile.firstName,
-          last_name: profile.lastName,
-          email: profile.email,
-          password_hash,
-          phone: shopPhone || null,
-          status: 'active',
-          google_id: profile.googleId,
-        } as any,
-        { transaction: t },
-      );
+      const owner: any = await new this.user({
+        role_id: adminRole.id,
+        first_name: profile.firstName,
+        last_name: profile.lastName,
+        email: profile.email,
+        password_hash,
+        phone: shopPhone || null,
+        status: 'active',
+        google_id: profile.googleId,
+      }).save({ session });
 
-      const newReferralCode = await generateUniqueReferralCode(this.shop, t);
-      const shop: any = await this.shop.create(
-        {
-          name: shopName,
-          owner_id: owner.id,
-          phone: shopPhone || null,
-          email: shopEmail || profile.email,
-          is_active: false,
-          referral_code: newReferralCode,
-          referred_by_shop_id: referrerShop?.id ?? null,
-        } as any,
-        { transaction: t },
-      );
+      const newReferralCode = await generateUniqueReferralCode(this.shop, session);
+      const shop: any = await new this.shop({
+        name: shopName,
+        owner_id: owner.id,
+        phone: shopPhone || null,
+        email: shopEmail || profile.email,
+        is_active: false,
+        referral_code: newReferralCode,
+        referred_by_shop_id: referrerShop?.id ?? null,
+      }).save({ session });
 
-      await owner.update({ shop_id: shop.id }, { transaction: t });
+      await owner.set({ shop_id: shop.id }).save({ session });
 
       if (referrerShop) {
-        await this.referral.create(
-          { referrer_shop_id: referrerShop.id, referred_shop_id: shop.id, status: 'pending' } as any,
-          { transaction: t },
-        );
+        await new this.referral({
+          referrer_shop_id: referrerShop.id, referred_shop_id: shop.id, status: 'pending',
+        }).save({ session });
       }
-
-      await t.commit();
 
       const token = this.auth.sign({
         id: owner.id,
@@ -336,10 +311,7 @@ export class AuthService {
         },
         'Account created',
       );
-    } catch (err) {
-      await t.rollback();
-      throw err;
-    }
+    });
   }
 
   async sendWhatsAppOtp(body: any) {
@@ -361,11 +333,10 @@ export class AuthService {
     if (!phone || !code) throw new AppError('phone and code are required', 400);
     const normalizedPhone = await this.otp.verifyAndConsume(phone, code);
 
-    const user: any = await this.user.findOne({
-      where: { phone: normalizedPhone },
-      include: [{ model: Role, attributes: ['name'] }],
-      order: [['created_at', 'ASC']],
-    });
+    const user: any = await this.user
+      .findOne({ phone: normalizedPhone })
+      .populate({ path: 'Role', select: 'name -_id' })
+      .sort({ createdAt: 1 });
 
     if (!user) {
       throw new AppError(
@@ -397,11 +368,10 @@ export class AuthService {
   async loginWithPhone(idToken: string) {
     const normalizedPhone = await this.firebaseAdmin.verifyPhoneToken(idToken);
 
-    const user: any = await this.user.findOne({
-      where: { phone: normalizedPhone },
-      include: [{ model: Role, attributes: ['name'] }],
-      order: [['created_at', 'ASC']],
-    });
+    const user: any = await this.user
+      .findOne({ phone: normalizedPhone })
+      .populate({ path: 'Role', select: 'name -_id' })
+      .sort({ createdAt: 1 });
 
     if (!user) {
       throw new AppError(
@@ -428,62 +398,52 @@ export class AuthService {
   // token instead of a password — email is still required (used for the
   // account's login identity/contact), phone is the Firebase-verified number.
   async registerOwnerWithPhone(body: any) {
-    const t = await this.sequelize.transaction();
-    try {
-      const { idToken, firstName, lastName, email, shopName, shopEmail, referralCode } = body;
-      if (!firstName || !lastName || !email || !shopName) {
-        throw new AppError('firstName, lastName, email and shopName are required', 400);
-      }
-      const normalizedPhone = await this.firebaseAdmin.verifyPhoneToken(idToken);
+    const { idToken, firstName, lastName, email, shopName, shopEmail, referralCode } = body;
+    if (!firstName || !lastName || !email || !shopName) {
+      throw new AppError('firstName, lastName, email and shopName are required', 400);
+    }
+    const normalizedPhone = await this.firebaseAdmin.verifyPhoneToken(idToken);
 
-      const existingEmail = await this.user.findOne({ where: { email }, transaction: t });
+    return withTransaction(this.connection, async (session) => {
+      const existingEmail = await this.user.findOne({ email }).session(session);
       if (existingEmail) throw new AppError('An account with this email already exists', 409);
-      const existingPhone = await this.user.findOne({ where: { phone: normalizedPhone }, transaction: t });
+      const existingPhone = await this.user.findOne({ phone: normalizedPhone }).session(session);
       if (existingPhone) throw new AppError('An account with this phone number already exists', 409);
 
-      const adminRole = await this.role.findOne({ where: { name: 'admin' }, transaction: t });
+      const adminRole = await this.role.findOne({ name: 'admin' }).session(session);
       if (!adminRole) throw new AppError('Admin role not configured', 500);
 
-      const referrerShop = await this.resolveReferrer(referralCode, normalizedPhone, t);
+      const referrerShop = await this.resolveReferrer(referralCode, normalizedPhone, session);
 
       const password_hash = await this.unusablePasswordHash();
-      const owner: any = await this.user.create(
-        {
-          role_id: adminRole.id,
-          first_name: firstName,
-          last_name: lastName,
-          email,
-          password_hash,
-          phone: normalizedPhone,
-          status: 'active',
-        } as any,
-        { transaction: t },
-      );
+      const owner: any = await new this.user({
+        role_id: adminRole.id,
+        first_name: firstName,
+        last_name: lastName,
+        email,
+        password_hash,
+        phone: normalizedPhone,
+        status: 'active',
+      }).save({ session });
 
-      const newReferralCode = await generateUniqueReferralCode(this.shop, t);
-      const shop: any = await this.shop.create(
-        {
-          name: shopName,
-          owner_id: owner.id,
-          phone: normalizedPhone,
-          email: shopEmail || email,
-          is_active: false,
-          referral_code: newReferralCode,
-          referred_by_shop_id: referrerShop?.id ?? null,
-        } as any,
-        { transaction: t },
-      );
+      const newReferralCode = await generateUniqueReferralCode(this.shop, session);
+      const shop: any = await new this.shop({
+        name: shopName,
+        owner_id: owner.id,
+        phone: normalizedPhone,
+        email: shopEmail || email,
+        is_active: false,
+        referral_code: newReferralCode,
+        referred_by_shop_id: referrerShop?.id ?? null,
+      }).save({ session });
 
-      await owner.update({ shop_id: shop.id }, { transaction: t });
+      await owner.set({ shop_id: shop.id }).save({ session });
 
       if (referrerShop) {
-        await this.referral.create(
-          { referrer_shop_id: referrerShop.id, referred_shop_id: shop.id, status: 'pending' } as any,
-          { transaction: t },
-        );
+        await new this.referral({
+          referrer_shop_id: referrerShop.id, referred_shop_id: shop.id, status: 'pending',
+        }).save({ session });
       }
-
-      await t.commit();
 
       const token = this.auth.sign({
         id: owner.id,
@@ -507,73 +467,60 @@ export class AuthService {
         },
         'Account created',
       );
-    } catch (err) {
-      await t.rollback();
-      throw err;
-    }
+    });
   }
 
   // Same as registerOwner, but identity is proven by a WhatsApp OTP instead
   // of a password — email is still required (used for the account's login
   // identity/contact), phone is the OTP-verified number.
   async registerOwnerWithWhatsApp(body: any) {
-    const t = await this.sequelize.transaction();
-    try {
-      const { phone, code, firstName, lastName, email, shopName, shopEmail, referralCode } = body;
-      if (!phone || !code) throw new AppError('phone and code are required', 400);
-      if (!firstName || !lastName || !email || !shopName) {
-        throw new AppError('firstName, lastName, email and shopName are required', 400);
-      }
-      const normalizedPhone = await this.otp.verifyAndConsume(phone, code);
+    const { phone, code, firstName, lastName, email, shopName, shopEmail, referralCode } = body;
+    if (!phone || !code) throw new AppError('phone and code are required', 400);
+    if (!firstName || !lastName || !email || !shopName) {
+      throw new AppError('firstName, lastName, email and shopName are required', 400);
+    }
+    const normalizedPhone = await this.otp.verifyAndConsume(phone, code);
 
-      const existingEmail = await this.user.findOne({ where: { email }, transaction: t });
+    return withTransaction(this.connection, async (session) => {
+      const existingEmail = await this.user.findOne({ email }).session(session);
       if (existingEmail) throw new AppError('An account with this email already exists', 409);
-      const existingPhone = await this.user.findOne({ where: { phone: normalizedPhone }, transaction: t });
+      const existingPhone = await this.user.findOne({ phone: normalizedPhone }).session(session);
       if (existingPhone) throw new AppError('An account with this phone number already exists', 409);
 
-      const adminRole = await this.role.findOne({ where: { name: 'admin' }, transaction: t });
+      const adminRole = await this.role.findOne({ name: 'admin' }).session(session);
       if (!adminRole) throw new AppError('Admin role not configured', 500);
 
-      const referrerShop = await this.resolveReferrer(referralCode, normalizedPhone, t);
+      const referrerShop = await this.resolveReferrer(referralCode, normalizedPhone, session);
 
       const password_hash = await this.unusablePasswordHash();
-      const owner: any = await this.user.create(
-        {
-          role_id: adminRole.id,
-          first_name: firstName,
-          last_name: lastName,
-          email,
-          password_hash,
-          phone: normalizedPhone,
-          status: 'active',
-        } as any,
-        { transaction: t },
-      );
+      const owner: any = await new this.user({
+        role_id: adminRole.id,
+        first_name: firstName,
+        last_name: lastName,
+        email,
+        password_hash,
+        phone: normalizedPhone,
+        status: 'active',
+      }).save({ session });
 
-      const newReferralCode = await generateUniqueReferralCode(this.shop, t);
-      const shop: any = await this.shop.create(
-        {
-          name: shopName,
-          owner_id: owner.id,
-          phone: normalizedPhone,
-          email: shopEmail || email,
-          is_active: false,
-          referral_code: newReferralCode,
-          referred_by_shop_id: referrerShop?.id ?? null,
-        } as any,
-        { transaction: t },
-      );
+      const newReferralCode = await generateUniqueReferralCode(this.shop, session);
+      const shop: any = await new this.shop({
+        name: shopName,
+        owner_id: owner.id,
+        phone: normalizedPhone,
+        email: shopEmail || email,
+        is_active: false,
+        referral_code: newReferralCode,
+        referred_by_shop_id: referrerShop?.id ?? null,
+      }).save({ session });
 
-      await owner.update({ shop_id: shop.id }, { transaction: t });
+      await owner.set({ shop_id: shop.id }).save({ session });
 
       if (referrerShop) {
-        await this.referral.create(
-          { referrer_shop_id: referrerShop.id, referred_shop_id: shop.id, status: 'pending' } as any,
-          { transaction: t },
-        );
+        await new this.referral({
+          referrer_shop_id: referrerShop.id, referred_shop_id: shop.id, status: 'pending',
+        }).save({ session });
       }
-
-      await t.commit();
 
       const token = this.auth.sign({
         id: owner.id,
@@ -597,10 +544,7 @@ export class AuthService {
         },
         'Account created',
       );
-    } catch (err) {
-      await t.rollback();
-      throw err;
-    }
+    });
   }
 
   // Self-service deletion, proven by email+password (same as login) rather
@@ -619,66 +563,59 @@ export class AuthService {
     const { email, password } = body;
     if (!email || !password) throw new AppError('Email and password required', 400);
 
-    const user: any = await this.user.scope('withPassword').findOne({
-      where: { email },
-      include: [{ model: Role, attributes: ['name'] }],
-    });
+    const user: any = await this.user
+      .findOne({ email })
+      .select('+password_hash')
+      .populate({ path: 'Role', select: 'name -_id' });
 
     if (!user || user.deleted_at) throw new AppError('Invalid credentials', 401);
 
     const valid = await this.auth.compare(password, user.password_hash);
     if (!valid) throw new AppError('Invalid credentials', 401);
 
-    const t = await this.sequelize.transaction();
-    try {
-      const oldProfilePic = user.profile_pic;
-      const oldGovtIdUrl = user.govt_id_url;
+    const oldProfilePic = user.profile_pic;
+    const oldGovtIdUrl = user.govt_id_url;
+    const unusableHash = await this.unusablePasswordHash();
 
-      await user.update(
-        {
-          first_name: 'Deleted',
-          last_name: 'User',
-          email: `deleted-${user.id}@deleted.gymaxis.app`,
-          password_hash: await this.unusablePasswordHash(),
-          phone: null,
-          date_of_birth: null,
-          gender: null,
-          profile_pic: null,
-          emergency_contact: null,
-          specialization: null,
-          bio: null,
-          govt_id_url: null,
-          fcm_token: null,
-          google_id: null,
-          status: 'inactive',
-          deleted_at: new Date(),
-        },
-        { transaction: t },
-      );
+    await withTransaction(this.connection, async (session) => {
+      await user.set({
+        first_name: 'Deleted',
+        last_name: 'User',
+        email: `deleted-${user.id}@deleted.gymaxis.app`,
+        password_hash: unusableHash,
+        phone: null,
+        date_of_birth: null,
+        gender: null,
+        profile_pic: null,
+        emergency_contact: null,
+        specialization: null,
+        bio: null,
+        govt_id_url: null,
+        fcm_token: null,
+        google_id: null,
+        status: 'inactive',
+        deleted_at: new Date(),
+      }).save({ session });
 
       if (user.Role.name === 'admin') {
-        await this.shop.update(
-          { is_active: false },
-          { where: { owner_id: user.id }, transaction: t },
+        await this.shop.updateMany(
+          { owner_id: user.id },
+          { $set: { is_active: false } },
+          { session },
         );
       }
+    });
 
-      await t.commit();
+    if (oldProfilePic) this.s3.deleteObject(oldProfilePic).catch(() => {});
+    if (oldGovtIdUrl) this.s3.deleteObject(oldGovtIdUrl).catch(() => {});
 
-      if (oldProfilePic) this.s3.deleteObject(oldProfilePic).catch(() => {});
-      if (oldGovtIdUrl) this.s3.deleteObject(oldGovtIdUrl).catch(() => {});
-
-      return new ApiPayload(null, 'Account deleted');
-    } catch (err) {
-      await t.rollback();
-      throw err;
-    }
+    return new ApiPayload(null, 'Account deleted');
   }
 
   async me(userId: string) {
-    const user: any = await this.user.findByPk(userId, {
-      include: [{ model: Role, attributes: ['name'] }],
-    });
+    const user: any = await this.user
+      .findById(userId)
+      .populate({ path: 'Role', select: 'name -_id' });
     if (!user) throw new AppError('User not found', 404);
     return this.serializeUser(user);
   }
@@ -701,11 +638,11 @@ export class AuthService {
     const expectedPrefix = `${shopId ?? 'platform'}/${segment}/profiles/avatar_`;
     if (!key.startsWith(expectedPrefix)) throw new AppError('Invalid object key', 400);
 
-    const user: any = await this.user.findByPk(userId);
+    const user: any = await this.user.findById(userId);
     if (!user) throw new AppError('User not found', 404);
 
     const oldKey = user.profile_pic;
-    await user.update({ profile_pic: key });
+    await user.set({ profile_pic: key }).save();
     if (oldKey && oldKey !== key) {
       this.s3.deleteObject(oldKey).catch(() => {});
     }
@@ -715,13 +652,13 @@ export class AuthService {
   }
 
   async removeProfilePicture(userId: string) {
-    const user: any = await this.user.findByPk(userId);
+    const user: any = await this.user.findById(userId);
     if (!user) throw new AppError('User not found', 404);
 
     const oldKey = user.profile_pic;
     if (!oldKey) return new ApiPayload(null, 'No profile picture to remove');
 
-    await user.update({ profile_pic: null });
+    await user.set({ profile_pic: null }).save();
     this.s3.deleteObject(oldKey).catch(() => {});
 
     return new ApiPayload(null, 'Profile picture removed');
@@ -732,11 +669,11 @@ export class AuthService {
     if (!newPassword || String(newPassword).trim().length < 8) {
       throw new AppError('New password must be at least 8 characters', 400);
     }
-    const user: any = await this.user.scope('withPassword').findByPk(userId);
+    const user: any = await this.user.findById(userId).select('+password_hash');
     const valid = await this.auth.compare(currentPassword, user.password_hash);
     if (!valid) throw new AppError('Current password incorrect', 400);
     const hash = await this.auth.hash(newPassword);
-    await user.update({ password_hash: hash });
+    await user.set({ password_hash: hash }).save();
     return new ApiPayload(null, 'Password changed successfully');
   }
 
@@ -744,9 +681,9 @@ export class AuthService {
   // pushes. Called on app start/login (set) and logout (cleared).
   async updateFcmToken(userId: string, body: any) {
     const { fcmToken } = body;
-    const user: any = await this.user.findByPk(userId);
+    const user: any = await this.user.findById(userId);
     if (!user) throw new AppError('User not found', 404);
-    await user.update({ fcm_token: fcmToken || null });
+    await user.set({ fcm_token: fcmToken || null }).save();
     return new ApiPayload(null, fcmToken ? 'Device registered for push notifications' : 'Device unregistered');
   }
 }

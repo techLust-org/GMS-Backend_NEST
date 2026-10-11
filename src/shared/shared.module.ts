@@ -1,6 +1,4 @@
 import { Global, Module } from '@nestjs/common';
-import { SequelizeModule } from '@nestjs/sequelize';
-import { Attendance, Ledger, Notification, Subscription, User, OtpRequest } from '../models';
 import { RazorpayService } from './razorpay.service';
 import { NotificationService } from './notification.service';
 import { LedgerService } from './ledger.service';
@@ -17,7 +15,6 @@ import { FirebaseAdminService } from './firebase-admin.service';
 
 @Global()
 @Module({
-  imports: [SequelizeModule.forFeature([Notification, Ledger, Attendance, Subscription, User, OtpRequest])],
   providers: [
     RazorpayService, NotificationService, LedgerService, FinancialService, CronService,
     DbBackupCronService, NotificationsInboxService, S3Service, MailService, PushService,

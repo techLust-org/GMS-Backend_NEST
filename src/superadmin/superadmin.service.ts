@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { InjectModel, InjectConnection } from '@nestjs/sequelize';
-import { Sequelize } from 'sequelize-typescript';
-import { Op, fn, col } from 'sequelize';
+import { InjectModel, InjectConnection } from '@nestjs/mongoose';
+import { Connection, Model } from 'mongoose';
 import { randomBytes } from 'crypto';
 import {
   Shop, ShopSubscription, ShopSubscriptionPlan, User, Role, Subscription, Product, Expense,
@@ -12,6 +11,7 @@ import { S3Service } from '../shared/s3.service';
 import { MailService } from '../shared/mail.service';
 import { AppError } from '../common/app-error';
 import { ApiPayload } from '../common/api-payload';
+import { withTransaction, iLike } from '../database/db-utils';
 
 // Unambiguous character set (no 0/O/1/l/I) so temp passwords are easy to
 // read/retype if the super-admin has to relay one manually.
@@ -30,15 +30,15 @@ const iso = (d: any) => new Date(d).toISOString().split('T')[0];
 @Injectable()
 export class SuperadminService {
   constructor(
-    @InjectModel(Shop) private readonly shop: typeof Shop,
-    @InjectModel(ShopSubscription) private readonly shopSubscription: typeof ShopSubscription,
-    @InjectModel(ShopSubscriptionPlan) private readonly shopSubscriptionPlan: typeof ShopSubscriptionPlan,
-    @InjectModel(User) private readonly user: typeof User,
-    @InjectModel(Role) private readonly role: typeof Role,
-    @InjectModel(Subscription) private readonly subscription: typeof Subscription,
-    @InjectModel(Product) private readonly product: typeof Product,
-    @InjectModel(Expense) private readonly expense: typeof Expense,
-    @InjectConnection() private readonly sequelize: Sequelize,
+    @InjectModel(Shop.name) private readonly shop: Model<any>,
+    @InjectModel(ShopSubscription.name) private readonly shopSubscription: Model<any>,
+    @InjectModel(ShopSubscriptionPlan.name) private readonly shopSubscriptionPlan: Model<any>,
+    @InjectModel(User.name) private readonly user: Model<any>,
+    @InjectModel(Role.name) private readonly role: Model<any>,
+    @InjectModel(Subscription.name) private readonly subscription: Model<any>,
+    @InjectModel(Product.name) private readonly product: Model<any>,
+    @InjectModel(Expense.name) private readonly expense: Model<any>,
+    @InjectConnection() private readonly connection: Connection,
     private readonly auth: AuthCryptoService,
     private readonly notificationService: NotificationService,
     private readonly s3: S3Service,
@@ -46,39 +46,39 @@ export class SuperadminService {
   ) {}
 
   private activeSubFor(shopId: string) {
-    return this.shopSubscription.findOne({
-      where: { shop_id: shopId, status: 'active', end_date: { [Op.gte]: today() } },
-      include: [{ model: ShopSubscriptionPlan, as: 'plan' }],
-      order: [['end_date', 'DESC']],
-    });
+    return this.shopSubscription
+      .findOne({ shop_id: shopId, status: 'active', end_date: { $gte: today() } })
+      .populate('plan')
+      .sort({ end_date: -1 });
+  }
+
+  // COALESCE(SUM(field), 0) over the matching documents.
+  private async sumOf(model: Model<any>, field: string, match: any = {}): Promise<number> {
+    const [row] = await model.aggregate([
+      { $match: match },
+      { $group: { _id: null, total: { $sum: `$${field}` } } },
+    ]);
+    return row ? Math.round(row.total * 100) / 100 : 0;
   }
 
   async stats() {
     const [roles, shops, activeSubs] = await Promise.all([
-      this.role.findAll(),
-      this.shop.findAll({ attributes: ['id', 'is_active', 'createdAt'] }),
-      this.shopSubscription.findAll({
-        where: { status: 'active', end_date: { [Op.gte]: today() } },
-        attributes: ['shop_id'],
-      }),
+      this.role.find(),
+      this.shop.find().select('is_active createdAt'),
+      this.shopSubscription
+        .find({ status: 'active', end_date: { $gte: today() } })
+        .select('shop_id'),
     ]);
 
     const roleId: any = Object.fromEntries(roles.map((r: any) => [r.name, r.id]));
     const activeShopIds = new Set(activeSubs.map((s: any) => s.shop_id));
 
-    const [owners, trainers, members, revenueRow, mrrRow]: any = await Promise.all([
-      this.user.count({ where: { role_id: roleId.admin } }),
-      this.user.count({ where: { role_id: roleId.trainer } }),
-      this.user.count({ where: { role_id: roleId.member } }),
-      this.shopSubscription.findOne({
-        attributes: [[fn('COALESCE', fn('SUM', col('sell_price')), 0), 'total']],
-        raw: true,
-      }),
-      this.shopSubscription.findOne({
-        where: { status: 'active', end_date: { [Op.gte]: today() } },
-        attributes: [[fn('COALESCE', fn('SUM', col('sell_price')), 0), 'total']],
-        raw: true,
-      }),
+    const [owners, trainers, members, totalRevenue, activeRecurringRevenue]: any = await Promise.all([
+      this.user.countDocuments({ role_id: roleId.admin }),
+      this.user.countDocuments({ role_id: roleId.trainer }),
+      this.user.countDocuments({ role_id: roleId.member }),
+      this.sumOf(this.shopSubscription, 'sell_price'),
+      this.sumOf(this.shopSubscription, 'sell_price', { status: 'active', end_date: { $gte: today() } }),
     ]);
 
     const thirtyDaysAgo = iso(addDays(new Date(), -30));
@@ -93,8 +93,8 @@ export class SuperadminService {
       totalTrainers: trainers,
       totalMembers: members,
       totalUsers: owners + trainers + members,
-      totalRevenue: Number(revenueRow.total),
-      activeRecurringRevenue: Number(mrrRow.total),
+      totalRevenue,
+      activeRecurringRevenue,
     };
   }
 
@@ -102,25 +102,19 @@ export class SuperadminService {
     const { search, status } = query;
     const where: any = {};
     if (search) {
-      where[Op.or] = [
-        { name: { [Op.iLike]: `%${search}%` } },
-        { email: { [Op.iLike]: `%${search}%` } },
-      ];
+      where.$or = [{ name: iLike(search) }, { email: iLike(search) }];
     }
 
-    const shops: any[] = await this.shop.findAll({
-      where,
-      include: [
-        { model: User, as: 'owner', attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'status'] },
-      ],
-      order: [['created_at', 'DESC']],
-    });
+    const shops: any[] = await this.shop
+      .find(where)
+      .populate({ path: 'owner', select: 'first_name last_name email phone status' })
+      .sort({ createdAt: -1 });
 
-    const memberRole: any = await this.role.findOne({ where: { name: 'member' } });
+    const memberRole: any = await this.role.findOne({ name: 'member' });
 
     const data = await Promise.all(shops.map(async (shop: any) => {
       const sub: any = await this.activeSubFor(shop.id);
-      const memberCount = await this.user.count({ where: { shop_id: shop.id, role_id: memberRole.id } });
+      const memberCount = await this.user.countDocuments({ shop_id: shop.id, role_id: memberRole.id });
       const daysLeft = sub ? Math.ceil((new Date(sub.end_date).getTime() - Date.now()) / 86400000) : null;
       const isActive = !!sub;
       return {
@@ -183,94 +177,75 @@ export class SuperadminService {
       throw new AppError('Invalid profile picture key', 400);
     }
 
-    const t = await this.sequelize.transaction();
-    try {
-      const existing = await this.user.findOne({ where: { email: ownerEmail }, transaction: t });
+    const tempPassword = generateTempPassword();
+    const password_hash = await this.auth.hash(tempPassword);
+
+    const { owner, shop }: any = await withTransaction(this.connection, async (session) => {
+      const existing = await this.user.findOne({ email: ownerEmail }).session(session);
       if (existing) throw new AppError('An account with this email already exists', 409);
 
-      const adminRole = await this.role.findOne({ where: { name: 'admin' }, transaction: t });
+      const adminRole = await this.role.findOne({ name: 'admin' }).session(session);
       if (!adminRole) throw new AppError('Admin role not configured', 500);
 
-      const tempPassword = generateTempPassword();
-      const password_hash = await this.auth.hash(tempPassword);
+      const owner: any = await new this.user({
+        role_id: adminRole.id,
+        first_name: ownerFirstName,
+        last_name: ownerLastName,
+        email: ownerEmail,
+        password_hash,
+        phone: ownerPhone || null,
+        profile_pic: profilePicKey || null,
+        status: 'active',
+      }).save({ session });
 
-      const owner: any = await this.user.create(
-        {
-          role_id: adminRole.id,
-          first_name: ownerFirstName,
-          last_name: ownerLastName,
-          email: ownerEmail,
-          password_hash,
-          phone: ownerPhone || null,
-          profile_pic: profilePicKey || null,
-          status: 'active',
-        } as any,
-        { transaction: t },
-      );
+      const shop: any = await new this.shop({
+        name: shopName,
+        owner_id: owner.id,
+        phone: ownerPhone || null,
+        email: ownerEmail,
+        is_active: false,
+      }).save({ session });
 
-      const shop: any = await this.shop.create(
-        {
-          name: shopName,
-          owner_id: owner.id,
-          phone: ownerPhone || null,
-          email: ownerEmail,
-          is_active: false,
-        } as any,
-        { transaction: t },
-      );
+      await owner.set({ shop_id: shop.id }).save({ session });
+      return { owner, shop };
+    });
 
-      await owner.update({ shop_id: shop.id }, { transaction: t });
-      await t.commit();
+    const emailSent = await this.mail.sendOwnerWelcomeEmail(
+      ownerEmail, ownerFirstName, shopName, tempPassword,
+    );
 
-      const emailSent = await this.mail.sendOwnerWelcomeEmail(
-        ownerEmail, ownerFirstName, shopName, tempPassword,
-      );
-
-      return new ApiPayload(
-        {
-          shop: { id: shop.id, name: shop.name },
-          owner: { id: owner.id, email: owner.email },
-          emailSent,
-          // Only handed back when the email couldn't be sent, so the
-          // super-admin can relay it manually — never returned otherwise.
-          tempPassword: emailSent ? undefined : tempPassword,
-        },
-        emailSent ? 'Owner created and welcome email sent' : 'Owner created, but the welcome email could not be sent',
-      );
-    } catch (err) {
-      await t.rollback();
-      throw err;
-    }
+    return new ApiPayload(
+      {
+        shop: { id: shop.id, name: shop.name },
+        owner: { id: owner.id, email: owner.email },
+        emailSent,
+        // Only handed back when the email couldn't be sent, so the
+        // super-admin can relay it manually — never returned otherwise.
+        tempPassword: emailSent ? undefined : tempPassword,
+      },
+      emailSent ? 'Owner created and welcome email sent' : 'Owner created, but the welcome email could not be sent',
+    );
   }
 
   async shopDetail(id: string) {
-    const shop: any = await this.shop.findByPk(id, {
-      include: [{ model: User, as: 'owner', attributes: ['id', 'first_name', 'last_name', 'email', 'phone', 'status', 'createdAt'] }],
-    });
+    const shop: any = await this.shop
+      .findById(id)
+      .populate({ path: 'owner', select: 'first_name last_name email phone status createdAt' });
     if (!shop) throw new AppError('Shop not found', 404);
 
-    const roles = await this.role.findAll();
+    const roles = await this.role.find();
     const roleId: any = Object.fromEntries(roles.map((r: any) => [r.name, r.id]));
 
-    const [subHistory, trainers, members, productCount, memberSubsRow, expenseRow]: any = await Promise.all([
-      this.shopSubscription.findAll({
-        where: { shop_id: shop.id },
-        include: [{ model: ShopSubscriptionPlan, as: 'plan', attributes: ['name', 'plan_type'] }],
-        order: [['created_at', 'DESC']],
-      }),
-      this.user.count({ where: { shop_id: shop.id, role_id: roleId.trainer } }),
-      this.user.count({ where: { shop_id: shop.id, role_id: roleId.member } }),
-      this.product.count({ where: { shop_id: shop.id } }),
-      this.subscription.findOne({
-        where: { shop_id: shop.id },
-        attributes: [[fn('COALESCE', fn('SUM', col('sell_price')), 0), 'total']],
-        raw: true,
-      }),
-      this.expense.findOne({
-        where: { shop_id: shop.id },
-        attributes: [[fn('COALESCE', fn('SUM', col('amount')), 0), 'total']],
-        raw: true,
-      }),
+    const [subHistory, trainers, members, productCount, shopRevenue, shopExpenses]: any = await Promise.all([
+      this.shopSubscription
+        .find({ shop_id: shop.id })
+        .populate({ path: 'plan', select: 'name plan_type -_id' })
+        .sort({ createdAt: -1 }),
+      this.user.countDocuments({ shop_id: shop.id, role_id: roleId.trainer }),
+      this.user.countDocuments({ shop_id: shop.id, role_id: roleId.member }),
+      this.product.countDocuments({ shop_id: shop.id }),
+      this.sumOf(this.subscription, 'sell_price', { shop_id: shop.id }),
+      this.sumOf(this.expense, 'amount', { shop_id: shop.id }),
     ]);
 
     const active = await this.activeSubFor(shop.id);
@@ -298,8 +273,8 @@ export class SuperadminService {
         members,
         products: productCount,
       },
-      shopRevenue: Number(memberSubsRow.total),
-      shopExpenses: Number(expenseRow.total),
+      shopRevenue,
+      shopExpenses,
       subscriptions: subHistory.map((s: any) => ({
         id: s.id,
         planName: s.plan ? s.plan.name : null,
@@ -315,30 +290,28 @@ export class SuperadminService {
   }
 
   async grant(id: string, body: any) {
-    const t = await this.sequelize.transaction();
-    try {
+    return withTransaction(this.connection, async (session) => {
       const { planId, days } = body;
-      const shop: any = await this.shop.findByPk(id, { transaction: t });
+      const shop: any = await this.shop.findById(id).session(session);
       if (!shop) throw new AppError('Shop not found', 404);
 
-      const plan: any = await this.shopSubscriptionPlan.findByPk(planId, { transaction: t });
+      const plan: any = await this.shopSubscriptionPlan.findById(planId).session(session);
       if (!plan) throw new AppError('Invalid plan', 400);
 
       const duration = Number(days) > 0 ? Number(days) : plan.duration_days;
 
-      const current: any = await this.shopSubscription.findOne({
-        where: { shop_id: shop.id, status: 'active', end_date: { [Op.gte]: today() } },
-        order: [['end_date', 'DESC']],
-        transaction: t,
-      });
+      const current: any = await this.shopSubscription
+        .findOne({ shop_id: shop.id, status: 'active', end_date: { $gte: today() } })
+        .sort({ end_date: -1 })
+        .session(session);
       let startDate: any = new Date();
       if (current) {
         startDate = new Date(current.end_date);
-        await current.update({ status: 'expired' }, { transaction: t });
+        await current.set({ status: 'expired' }).save({ session });
       }
       const endDate = addDays(startDate, duration);
 
-      const sub = await this.shopSubscription.create({
+      const sub = await new this.shopSubscription({
         shop_id: shop.id,
         plan_id: plan.id,
         base_price: plan.base_price,
@@ -347,36 +320,28 @@ export class SuperadminService {
         start_date: iso(startDate),
         end_date: iso(endDate),
         razorpay_payment_id: 'MANUAL_GRANT',
-      } as any, { transaction: t });
+      }).save({ session });
 
-      await shop.update({ is_active: true }, { transaction: t });
-      await t.commit();
+      await shop.set({ is_active: true }).save({ session });
 
       return new ApiPayload(sub, `Granted ${duration} days of ${plan.name}`);
-    } catch (err) {
-      await t.rollback();
-      throw err;
-    }
+    });
   }
 
   async revoke(id: string) {
-    const t = await this.sequelize.transaction();
-    try {
-      const shop: any = await this.shop.findByPk(id, { transaction: t });
+    return withTransaction(this.connection, async (session) => {
+      const shop: any = await this.shop.findById(id).session(session);
       if (!shop) throw new AppError('Shop not found', 404);
 
-      await this.shopSubscription.update(
-        { status: 'cancelled' },
-        { where: { shop_id: shop.id, status: 'active' }, transaction: t },
+      await this.shopSubscription.updateMany(
+        { shop_id: shop.id, status: 'active' },
+        { $set: { status: 'cancelled' } },
+        { session },
       );
-      await shop.update({ is_active: false }, { transaction: t });
-      await t.commit();
+      await shop.set({ is_active: false }).save({ session });
 
       return new ApiPayload(null, 'Access revoked. The gym is now blocked.');
-    } catch (err) {
-      await t.rollback();
-      throw err;
-    }
+    });
   }
 
   async extend(id: string, body: any) {
@@ -388,8 +353,8 @@ export class SuperadminService {
     if (!sub) throw new AppError('No active subscription to extend. Use grant instead.', 400);
 
     const newEnd = addDays(sub.end_date, n);
-    await sub.update({ end_date: iso(newEnd) });
-    await this.shop.update({ is_active: true }, { where: { id } });
+    await sub.set({ end_date: iso(newEnd) }).save();
+    await this.shop.updateOne({ _id: id }, { $set: { is_active: true } });
 
     return new ApiPayload({ endDate: iso(newEnd) }, `Extended by ${n} days`);
   }
@@ -398,10 +363,10 @@ export class SuperadminService {
     const { status } = body;
     if (!['active', 'suspended'].includes(status)) throw new AppError('Invalid status', 400);
 
-    const shop: any = await this.shop.findByPk(id);
+    const shop: any = await this.shop.findById(id);
     if (!shop) throw new AppError('Shop not found', 404);
 
-    await this.user.update({ status }, { where: { id: shop.owner_id } });
+    await this.user.updateOne({ _id: shop.owner_id }, { $set: { status } }, { runValidators: true });
     return new ApiPayload(null, `Owner account ${status}`);
   }
 
@@ -413,16 +378,16 @@ export class SuperadminService {
       }
     }
 
-    const shop: any = await this.shop.findByPk(id);
+    const shop: any = await this.shop.findById(id);
     if (!shop) throw new AppError('Shop not found', 404);
 
     const normalized = themeColor ? themeColor : null;
-    await shop.update({ theme_color: normalized });
+    await shop.set({ theme_color: normalized }).save();
     return new ApiPayload({ themeColor: normalized }, normalized ? 'Theme color updated' : 'Theme color reset to default');
   }
 
   async notifyRenewal(id: string) {
-    const shop: any = await this.shop.findByPk(id);
+    const shop: any = await this.shop.findById(id);
     if (!shop) throw new AppError('Shop not found', 404);
     if (!shop.owner_id) throw new AppError('This shop has no owner to notify', 400);
 
@@ -444,13 +409,11 @@ export class SuperadminService {
   }
 
   async listPlans() {
-    const plans: any[] = await this.shopSubscriptionPlan.findAll({ order: [['sell_price', 'ASC']] });
-    const counts: any[] = await this.shopSubscription.findAll({
-      attributes: ['plan_id', [fn('COUNT', col('id')), 'count']],
-      group: ['plan_id'],
-      raw: true,
-    });
-    const countMap: any = Object.fromEntries(counts.map((c) => [c.plan_id, Number(c.count)]));
+    const plans: any[] = await this.shopSubscriptionPlan.find().sort({ sell_price: 1 });
+    const counts: any[] = await this.shopSubscription.aggregate([
+      { $group: { _id: '$plan_id', count: { $sum: 1 } } },
+    ]);
+    const countMap: any = Object.fromEntries(counts.map((c) => [c._id, Number(c.count)]));
     return plans.map((p) => ({ ...p.toJSON(), subscriptionCount: countMap[p.id] || 0 }));
   }
 
@@ -468,16 +431,16 @@ export class SuperadminService {
       sell_price: sellPrice,
       description: description || null,
       is_active: isActive !== false,
-    } as any);
+    });
     return new ApiPayload(plan, 'Plan created');
   }
 
   async updatePlan(id: string, body: any) {
-    const plan: any = await this.shopSubscriptionPlan.findByPk(id);
+    const plan: any = await this.shopSubscriptionPlan.findById(id);
     if (!plan) throw new AppError('Plan not found', 404);
 
     const { name, planType, durationDays, basePrice, discount, sellPrice, description, isActive } = body;
-    await plan.update({
+    await plan.set({
       name: name ?? plan.name,
       plan_type: planType ?? plan.plan_type,
       duration_days: durationDays ?? plan.duration_days,
@@ -486,32 +449,32 @@ export class SuperadminService {
       sell_price: sellPrice ?? plan.sell_price,
       description: description ?? plan.description,
       is_active: isActive ?? plan.is_active,
-    });
+    }).save();
     return new ApiPayload(plan, 'Plan updated');
   }
 
   async deletePlan(id: string) {
-    const plan: any = await this.shopSubscriptionPlan.findByPk(id);
+    const plan: any = await this.shopSubscriptionPlan.findById(id);
     if (!plan) throw new AppError('Plan not found', 404);
 
-    const inUse = await this.shopSubscription.count({ where: { plan_id: plan.id } });
+    const inUse = await this.shopSubscription.countDocuments({ plan_id: plan.id });
     if (inUse > 0) {
-      await plan.update({ is_active: false });
+      await plan.set({ is_active: false }).save();
       return new ApiPayload(null, 'Plan is in use — deactivated instead of deleted');
     }
-    await plan.destroy();
+    await plan.deleteOne();
     return new ApiPayload(null, 'Plan deleted');
   }
 
   async listSubscriptions() {
-    const subs: any[] = await this.shopSubscription.findAll({
-      include: [
-        { model: Shop, as: 'shop', attributes: ['id', 'name'] },
-        { model: ShopSubscriptionPlan, as: 'plan', attributes: ['name', 'plan_type'] },
-      ],
-      order: [['created_at', 'DESC']],
-      limit: 200,
-    });
+    const subs: any[] = await this.shopSubscription
+      .find()
+      .populate([
+        { path: 'shop', select: 'name' },
+        { path: 'plan', select: 'name plan_type -_id' },
+      ])
+      .sort({ createdAt: -1 })
+      .limit(200);
     return subs.map((s) => ({
       id: s.id,
       shop: s.shop ? { id: s.shop.id, name: s.shop.name } : null,
@@ -530,10 +493,10 @@ export class SuperadminService {
     if (!newPassword || String(newPassword).length < 6) {
       throw new AppError('New password must be at least 6 characters', 400);
     }
-    const user: any = await this.user.scope('withPassword').findByPk(userId);
+    const user: any = await this.user.findById(userId).select('+password_hash');
     const valid = await this.auth.compare(currentPassword, user.password_hash);
     if (!valid) throw new AppError('Current password incorrect', 400);
-    await user.update({ password_hash: await this.auth.hash(newPassword) });
+    await user.set({ password_hash: await this.auth.hash(newPassword) }).save();
     return new ApiPayload(null, 'Password changed');
   }
 }

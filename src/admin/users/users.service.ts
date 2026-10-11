@@ -1,21 +1,22 @@
 import { Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/sequelize';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { randomBytes } from 'crypto';
-import { Op } from 'sequelize';
 import { User, Role, Subscription, SubscriptionPlan } from '../../models';
 import { AuthCryptoService } from '../../common/auth-crypto.service';
 import { NotificationService } from '../../shared/notification.service';
 import { S3Service } from '../../shared/s3.service';
 import { AppError } from '../../common/app-error';
 import { ApiPayload } from '../../common/api-payload';
+import { iLike } from '../../database/db-utils';
 
 @Injectable()
 export class UsersService {
   constructor(
-    @InjectModel(User) private readonly user: typeof User,
-    @InjectModel(Role) private readonly role: typeof Role,
-    @InjectModel(Subscription) private readonly subscription: typeof Subscription,
-    @InjectModel(SubscriptionPlan) private readonly subscriptionPlan: typeof SubscriptionPlan,
+    @InjectModel(User.name) private readonly user: Model<any>,
+    @InjectModel(Role.name) private readonly role: Model<any>,
+    @InjectModel(Subscription.name) private readonly subscription: Model<any>,
+    @InjectModel(SubscriptionPlan.name) private readonly subscriptionPlan: Model<any>,
     private readonly auth: AuthCryptoService,
     private readonly notificationService: NotificationService,
     private readonly s3: S3Service,
@@ -31,34 +32,34 @@ export class UsersService {
   async list(shopId: string, query: any) {
     const { role, status, search, page = 1, limit = 20 } = query;
     const where: any = { shop_id: shopId };
-    const roleWhere: any = {};
-    if (role) roleWhere.name = role;
+    // The Role join was an inner join: filter by the matching role ids.
+    const roles: any[] = await this.role.find(role ? { name: role } : {}).select('_id');
+    where.role_id = { $in: roles.map((r) => r.id) };
     if (status) where.status = status;
     if (search) {
-      where[Op.or] = [
-        { first_name: { [Op.iLike]: `%${search}%` } },
-        { last_name: { [Op.iLike]: `%${search}%` } },
-        { email: { [Op.iLike]: `%${search}%` } },
+      where.$or = [
+        { first_name: iLike(search) },
+        { last_name: iLike(search) },
+        { email: iLike(search) },
       ];
     }
     const offset = (page - 1) * limit;
-    const includes = [
-      { model: Role, where: roleWhere, attributes: ['name'] },
-      {
-        model: Subscription,
-        as: 'subscriptions',
-        where: { status: 'active' },
-        required: false,
-        include: [{ model: SubscriptionPlan, as: 'plan', attributes: ['name', 'duration'] }],
-      },
-    ];
-    const { count, rows } = await this.user.findAndCountAll({
-      where,
-      include: includes as any,
-      limit: parseInt(limit),
-      offset: parseInt(String(offset), 10),
-      order: [['created_at', 'DESC']],
-    });
+    const [count, rows] = await Promise.all([
+      this.user.countDocuments(where),
+      this.user
+        .find(where)
+        .populate([
+          { path: 'Role', select: 'name -_id' },
+          {
+            path: 'subscriptions',
+            match: { status: 'active' },
+            populate: { path: 'plan', select: 'name duration -_id' },
+          },
+        ])
+        .sort({ createdAt: -1 })
+        .skip(parseInt(String(offset), 10))
+        .limit(parseInt(limit)),
+    ]);
     await Promise.all(rows.map((u: any) => this.withProfilePicUrl(u)));
     return new ApiPayload(rows, 'Users fetched', { total: count, page: +page, limit: +limit });
   }
@@ -68,10 +69,10 @@ export class UsersService {
       hireDate, salary, specialization, bio, emergencyContact, govtIdUrl } = body;
 
     if (!['trainer', 'member'].includes(role)) throw new AppError('Role must be trainer or member', 400);
-    const roleRecord: any = await this.role.findOne({ where: { name: role } });
+    const roleRecord: any = await this.role.findOne({ name: role });
     if (!roleRecord) throw new AppError('Invalid role', 400);
 
-    const existing = await this.user.findOne({ where: { email } });
+    const existing = await this.user.findOne({ email });
     if (existing) throw new AppError('Email already in use', 409);
 
     const password_hash = await this.auth.hash(password || randomBytes(24).toString('base64'));
@@ -91,33 +92,37 @@ export class UsersService {
       bio,
       emergency_contact: emergencyContact,
       govt_id_url: govtIdUrl,
-    } as any);
+    });
 
-    const result = await this.user.findByPk(user.id, { include: [{ model: Role, attributes: ['name'] }] });
+    const result = await this.withRole(user.id);
     return new ApiPayload(result, 'User created');
   }
 
+  private withRole(id: string) {
+    return this.user.findById(id).populate({ path: 'Role', select: 'name -_id' });
+  }
+
   async get(shopId: string, id: string) {
-    const user = await this.user.findOne({
-      where: { id, shop_id: shopId },
-      include: [
-        { model: Role, attributes: ['name'] },
+    const user = await this.user
+      .findOne({ _id: id, shop_id: shopId })
+      .populate([
+        { path: 'Role', select: 'name -_id' },
         {
-          model: Subscription, as: 'subscriptions', limit: 5, order: [['created_at', 'DESC']],
-          include: [{ model: SubscriptionPlan, as: 'plan' }],
+          path: 'subscriptions',
+          options: { sort: { createdAt: -1 }, perDocumentLimit: 5 },
+          populate: { path: 'plan' },
         },
-      ],
-    });
+      ]);
     if (!user) throw new AppError('User not found', 404);
     return this.withProfilePicUrl(user);
   }
 
   async update(shopId: string, id: string, body: any) {
-    const user: any = await this.user.findOne({ where: { id, shop_id: shopId } });
+    const user: any = await this.user.findOne({ _id: id, shop_id: shopId });
     if (!user) throw new AppError('User not found', 404);
     const { firstName, lastName, phone, dateOfBirth, gender, hireDate, salary,
       specialization, bio, emergencyContact, govtIdUrl } = body;
-    await user.update({
+    await user.set({
       first_name: firstName || user.first_name,
       last_name: lastName || user.last_name,
       phone: phone !== undefined ? phone : user.phone,
@@ -129,49 +134,48 @@ export class UsersService {
       bio: bio !== undefined ? bio : user.bio,
       emergency_contact: emergencyContact !== undefined ? emergencyContact : user.emergency_contact,
       govt_id_url: govtIdUrl !== undefined ? govtIdUrl : user.govt_id_url,
-    });
-    const result = await this.user.findByPk(user.id, { include: [{ model: Role, attributes: ['name'] }] });
+    }).save();
+    const result = await this.withRole(user.id);
     return new ApiPayload(result, 'User updated');
   }
 
   async remove(shopId: string, id: string) {
-    const user: any = await this.user.findOne({ where: { id, shop_id: shopId } });
+    const user: any = await this.user.findOne({ _id: id, shop_id: shopId });
     if (!user) throw new AppError('User not found', 404);
-    await user.update({ status: 'inactive' });
+    await user.set({ status: 'inactive' }).save();
     return new ApiPayload(null, 'User deactivated');
   }
 
   async setStatus(shopId: string, id: string, body: any) {
-    const user: any = await this.user.findOne({ where: { id, shop_id: shopId } });
+    const user: any = await this.user.findOne({ _id: id, shop_id: shopId });
     if (!user) throw new AppError('User not found', 404);
     const { status } = body;
     if (!['active', 'inactive', 'suspended'].includes(status)) throw new AppError('Invalid status', 400);
-    await user.update({ status });
+    await user.set({ status }).save();
     return new ApiPayload(null, `User ${status}`);
   }
 
   // Trainers are also members — the only way to become one is an existing
   // member being promoted by the owner, never a standalone signup.
   async promoteToTrainer(shopId: string, id: string, body: any) {
-    const user: any = await this.user.findOne({
-      where: { id, shop_id: shopId },
-      include: [{ model: Role, attributes: ['name'] }],
-    });
+    const user: any = await this.user
+      .findOne({ _id: id, shop_id: shopId })
+      .populate({ path: 'Role', select: 'name -_id' });
     if (!user) throw new AppError('User not found', 404);
     if (user.Role.name !== 'member') {
       throw new AppError('Only members can be promoted to trainer', 400);
     }
 
-    const trainerRole: any = await this.role.findOne({ where: { name: 'trainer' } });
+    const trainerRole: any = await this.role.findOne({ name: 'trainer' });
     if (!trainerRole) throw new AppError('Trainer role not configured', 500);
 
     const { specialization, salary, hireDate } = body;
-    await user.update({
+    await user.set({
       role_id: trainerRole.id,
       specialization: specialization !== undefined ? specialization : user.specialization,
       salary: salary !== undefined ? salary : user.salary,
       hire_date: hireDate !== undefined ? hireDate : user.hire_date,
-    });
+    }).save();
 
     await this.notificationService.createNotification({
       userId: user.id,
@@ -181,19 +185,18 @@ export class UsersService {
       message: 'The gym owner has promoted you to trainer. You still have full access to all member features.',
     });
 
-    const result = await this.user.findByPk(user.id, { include: [{ model: Role, attributes: ['name'] }] });
+    const result = await this.withRole(user.id);
     return new ApiPayload(result, 'Member promoted to trainer');
   }
 
   async notifyRenewal(shopId: string, id: string) {
-    const user: any = await this.user.findOne({ where: { id, shop_id: shopId } });
+    const user: any = await this.user.findOne({ _id: id, shop_id: shopId });
     if (!user) throw new AppError('User not found', 404);
 
-    const latestSub: any = await this.subscription.findOne({
-      where: { member_id: user.id, shop_id: shopId },
-      include: [{ model: SubscriptionPlan, as: 'plan', attributes: ['name'] }],
-      order: [['end_date', 'DESC']],
-    });
+    const latestSub: any = await this.subscription
+      .findOne({ member_id: user.id, shop_id: shopId })
+      .populate({ path: 'plan', select: 'name -_id' })
+      .sort({ end_date: -1 });
 
     const message = latestSub && latestSub.status === 'active'
       ? `Your ${latestSub.plan ? latestSub.plan.name : 'membership'} plan expires on ${latestSub.end_date}. Renew soon to keep your access active.`

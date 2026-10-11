@@ -1,13 +1,13 @@
 import { Injectable, CanActivate, ExecutionContext, HttpException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/sequelize';
-import { Op } from 'sequelize';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { ShopSubscription } from '../../models';
 
 // Port of middleware/requireActiveShop.js. 402 SHOP_INACTIVE gate.
 @Injectable()
 export class ActiveShopGuard implements CanActivate {
   constructor(
-    @InjectModel(ShopSubscription) private readonly shopSubscription: typeof ShopSubscription,
+    @InjectModel(ShopSubscription.name) private readonly shopSubscription: Model<any>,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -24,7 +24,7 @@ export class ActiveShopGuard implements CanActivate {
 
     const today = new Date().toISOString().split('T')[0];
     const sub = await this.shopSubscription.findOne({
-      where: { shop_id: shopId, status: 'active', end_date: { [Op.gte]: today } },
+      shop_id: shopId, status: 'active', end_date: { $gte: today },
     });
 
     if (!sub) {

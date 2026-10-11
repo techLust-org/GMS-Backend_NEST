@@ -1,28 +1,16 @@
-import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
+import { defineSchema, T } from './schema-helpers';
 
 // A short-lived, single-use OTP sent to a phone number over WhatsApp —
 // purely proves "this phone number answered a code sent to it"; it carries
 // no notion of login vs. registration. The caller (AuthService /
 // PublicShopsService) decides what to do once verifyAndConsume succeeds.
-@Table({ tableName: 'otp_requests', underscored: true })
-export class OtpRequest extends Model {
-  @PrimaryKey
-  @Default(DataType.UUIDV4)
-  @Column(DataType.UUID)
-  id: string;
+export const OtpRequestSchema = defineSchema('otp_requests', {
+  phone: T.string({ required: true }),
+  code_hash: T.string({ required: true }),
+  attempts: T.int({ required: true, default: 0 }),
+  expires_at: T.date({ required: true }),
+  consumed_at: T.date(),
+});
+OtpRequestSchema.index({ phone: 1 });
 
-  @Column({ type: DataType.STRING(20), allowNull: false })
-  phone: string;
-
-  @Column({ type: DataType.STRING, allowNull: false })
-  code_hash: string;
-
-  @Column({ type: DataType.INTEGER, allowNull: false, defaultValue: 0 })
-  attempts: number;
-
-  @Column({ type: DataType.DATE, allowNull: false })
-  expires_at: Date;
-
-  @Column(DataType.DATE)
-  consumed_at: Date;
-}
+export const OtpRequest = { name: 'OtpRequest', schema: OtpRequestSchema };

@@ -1,6 +1,7 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { InjectModel } from '@nestjs/sequelize';
-import { Attendance, User } from '../../models';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { Attendance } from '../../models';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -13,24 +14,23 @@ import { ApiPayload } from '../../common/api-payload';
 @UseGuards(JwtAuthGuard, RolesGuard, TenantGuard, ActiveShopGuard)
 @Roles('admin')
 export class AdminAttendanceController {
-  constructor(@InjectModel(Attendance) private readonly attendance: typeof Attendance) {}
+  constructor(@InjectModel(Attendance.name) private readonly attendance: Model<any>) {}
 
   @Get('today')
   async today(@ShopId() shopId: string, @Query() query: any) {
     const { page = 1, limit = 10 } = query;
     const today = new Date().toISOString().split('T')[0];
     const offset = (page - 1) * limit;
-    const { count, rows } = await this.attendance.findAndCountAll({
-      where: { attendance_date: today, shop_id: shopId },
-      include: [{
-        model: User,
-        as: 'member',
-        attributes: ['id', 'first_name', 'last_name', 'email'],
-      }],
-      order: [['check_in_time', 'ASC']],
-      limit: parseInt(limit),
-      offset: parseInt(String(offset), 10),
-    });
+    const where = { attendance_date: today, shop_id: shopId };
+    const [count, rows] = await Promise.all([
+      this.attendance.countDocuments(where),
+      this.attendance
+        .find(where)
+        .populate({ path: 'member', select: 'first_name last_name email' })
+        .sort({ check_in_time: 1 })
+        .skip(parseInt(String(offset), 10))
+        .limit(parseInt(limit)),
+    ]);
     return new ApiPayload(rows, 'Attendance fetched', { total: count, page: +page, limit: +limit });
   }
 }

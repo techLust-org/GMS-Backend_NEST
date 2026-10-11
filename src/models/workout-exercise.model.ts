@@ -1,33 +1,15 @@
-import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
+import { defineSchema, T } from './schema-helpers';
 
-@Table({ tableName: 'workout_exercises', underscored: true })
-export class WorkoutExercise extends Model {
-  @PrimaryKey
-  @Default(DataType.UUIDV4)
-  @Column(DataType.UUID)
-  id: string;
+export const WorkoutExerciseSchema = defineSchema('workout_exercises', {
+  workout_day_id: T.uuid({ required: true }),
+  name: T.string({ required: true }),
+  sets: T.int(),
+  reps: T.int(),
+  duration_secs: T.int(),
+  rest_secs: T.int({ default: 60 }),
+  notes: T.text(),
+  order_index: T.int({ default: 0 }),
+});
+WorkoutExerciseSchema.index({ workout_day_id: 1 });
 
-  @Column({ type: DataType.UUID, allowNull: false })
-  workout_day_id: string;
-
-  @Column({ type: DataType.STRING(150), allowNull: false })
-  name: string;
-
-  @Column(DataType.INTEGER)
-  sets: number;
-
-  @Column(DataType.INTEGER)
-  reps: number;
-
-  @Column(DataType.INTEGER)
-  duration_secs: number;
-
-  @Column({ type: DataType.INTEGER, defaultValue: 60 })
-  rest_secs: number;
-
-  @Column(DataType.TEXT)
-  notes: string;
-
-  @Column({ type: DataType.INTEGER, defaultValue: 0 })
-  order_index: number;
-}
+export const WorkoutExercise = { name: 'WorkoutExercise', schema: WorkoutExerciseSchema };

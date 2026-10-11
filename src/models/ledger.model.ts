@@ -1,28 +1,15 @@
-import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
+import { defineSchema, T } from './schema-helpers';
 
 // Backend-only cashflow log per shop.
-@Table({ tableName: 'ledger', underscored: true })
-export class Ledger extends Model {
-  @PrimaryKey
-  @Default(DataType.UUIDV4)
-  @Column(DataType.UUID)
-  id: string;
+export const LedgerSchema = defineSchema('ledger', {
+  shop_id: T.uuid({ required: true }),
+  type: T.enumOf(['credit', 'debit'], { required: true }),
+  amount: T.decimal({ required: true }),
+  reference: T.string(),
+  reference_id: T.uuid(),
+  entry_date: T.dateOnly(),
+});
+LedgerSchema.index({ shop_id: 1, entry_date: 1 });
+LedgerSchema.index({ shop_id: 1, reference: 1, reference_id: 1 });
 
-  @Column({ type: DataType.UUID, allowNull: false })
-  shop_id: string;
-
-  @Column({ type: DataType.ENUM('credit', 'debit'), allowNull: false })
-  type: string;
-
-  @Column({ type: DataType.DECIMAL(10, 2), allowNull: false })
-  amount: number;
-
-  @Column(DataType.STRING(50))
-  reference: string;
-
-  @Column(DataType.UUID)
-  reference_id: string;
-
-  @Column(DataType.DATEONLY)
-  entry_date: string;
-}
+export const Ledger = { name: 'Ledger', schema: LedgerSchema };

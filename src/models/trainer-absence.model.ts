@@ -1,24 +1,13 @@
-import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
+import { defineSchema, T } from './schema-helpers';
 
-@Table({ tableName: 'trainer_absences', underscored: true })
-export class TrainerAbsence extends Model {
-  @PrimaryKey
-  @Default(DataType.UUIDV4)
-  @Column(DataType.UUID)
-  id: string;
+export const TrainerAbsenceSchema = defineSchema('trainer_absences', {
+  shop_id: T.uuid({ required: true }),
+  trainer_id: T.uuid({ required: true }),
+  absence_date: T.dateOnly({ required: true }),
+  reason: T.text(),
+  notified: T.bool({ default: false }),
+});
+TrainerAbsenceSchema.index({ trainer_id: 1, absence_date: 1 }, { unique: true });
+TrainerAbsenceSchema.index({ shop_id: 1 });
 
-  @Column({ type: DataType.UUID, allowNull: false })
-  shop_id: string;
-
-  @Column({ type: DataType.UUID, allowNull: false })
-  trainer_id: string;
-
-  @Column({ type: DataType.DATEONLY, allowNull: false })
-  absence_date: string;
-
-  @Column(DataType.TEXT)
-  reason: string;
-
-  @Column({ type: DataType.BOOLEAN, defaultValue: false })
-  notified: boolean;
-}
+export const TrainerAbsence = { name: 'TrainerAbsence', schema: TrainerAbsenceSchema };

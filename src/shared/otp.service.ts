@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/sequelize';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { OtpRequest } from '../models';
 import { AuthCryptoService } from '../common/auth-crypto.service';
 import { WhatsAppService } from './whatsapp.service';
@@ -17,7 +18,7 @@ const MAX_ATTEMPTS = 5;
 @Injectable()
 export class OtpService {
   constructor(
-    @InjectModel(OtpRequest) private readonly otpRequest: typeof OtpRequest,
+    @InjectModel(OtpRequest.name) private readonly otpRequest: Model<any>,
     private readonly auth: AuthCryptoService,
     private readonly whatsapp: WhatsAppService,
   ) {}
@@ -32,10 +33,9 @@ export class OtpService {
     const phone = this.normalizePhone(rawPhone);
     if (phone.length < 8) throw new AppError('Enter a valid phone number with country code', 400);
 
-    const recent: any = await this.otpRequest.findOne({
-      where: { phone, consumed_at: null },
-      order: [['created_at', 'DESC']],
-    });
+    const recent: any = await this.otpRequest
+      .findOne({ phone, consumed_at: null })
+      .sort({ createdAt: -1 });
     if (recent && Date.now() - new Date(recent.createdAt).getTime() < RESEND_COOLDOWN_MS) {
       throw new AppError('Please wait a minute before requesting another code', 429);
     }
@@ -43,7 +43,7 @@ export class OtpService {
     const code = String(Math.floor(100000 + Math.random() * 900000));
     const code_hash = await this.auth.hash(code);
     const expires_at = new Date(Date.now() + OTP_TTL_MS);
-    await this.otpRequest.create({ phone, code_hash, expires_at } as any);
+    await this.otpRequest.create({ phone, code_hash, expires_at });
 
     const sent = await this.whatsapp.sendOtp(phone, code);
     // Only return the code in explicitly marked dev/test environments — never
@@ -57,10 +57,9 @@ export class OtpService {
   // caller uses that to look up/create the User.
   async verifyAndConsume(rawPhone: string, code: string): Promise<string> {
     const phone = this.normalizePhone(rawPhone);
-    const record: any = await this.otpRequest.findOne({
-      where: { phone, consumed_at: null },
-      order: [['created_at', 'DESC']],
-    });
+    const record: any = await this.otpRequest
+      .findOne({ phone, consumed_at: null })
+      .sort({ createdAt: -1 });
     if (!record) throw new AppError('No OTP request found for this number. Request a new code.', 400);
     if (new Date(record.expires_at) < new Date()) {
       throw new AppError('Code expired. Request a new one.', 400);
@@ -71,11 +70,11 @@ export class OtpService {
 
     const valid = await this.auth.compare(code, record.code_hash);
     if (!valid) {
-      await record.increment('attempts');
+      await this.otpRequest.updateOne({ _id: record.id }, { $inc: { attempts: 1 } });
       throw new AppError('Incorrect code', 400);
     }
 
-    await record.update({ consumed_at: new Date() });
+    await record.set({ consumed_at: new Date() }).save();
     return phone;
   }
 }

@@ -1,21 +1,13 @@
-import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
+import { defineSchema, T } from './schema-helpers';
 
-@Table({ tableName: 'workout_days', underscored: true })
-export class WorkoutDay extends Model {
-  @PrimaryKey
-  @Default(DataType.UUIDV4)
-  @Column(DataType.UUID)
-  id: string;
+export const WorkoutDaySchema = defineSchema('workout_days', {
+  workout_plan_id: T.uuid({ required: true }),
+  day_of_week: T.enumOf(
+    ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
+    { required: true },
+  ),
+  notes: T.text(),
+});
+WorkoutDaySchema.index({ workout_plan_id: 1 });
 
-  @Column({ type: DataType.UUID, allowNull: false })
-  workout_plan_id: string;
-
-  @Column({
-    type: DataType.ENUM('monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'),
-    allowNull: false,
-  })
-  day_of_week: string;
-
-  @Column(DataType.TEXT)
-  notes: string;
-}
+export const WorkoutDay = { name: 'WorkoutDay', schema: WorkoutDaySchema };

@@ -1,27 +1,13 @@
-import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
+import { defineSchema, T } from './schema-helpers';
 
-@Table({ tableName: 'diet_meals', underscored: true })
-export class DietMeal extends Model {
-  @PrimaryKey
-  @Default(DataType.UUIDV4)
-  @Column(DataType.UUID)
-  id: string;
+export const DietMealSchema = defineSchema('diet_meals', {
+  diet_plan_id: T.uuid({ required: true }),
+  meal_name: T.string({ required: true }),
+  meal_time: T.time(),
+  foods: T.text({ required: true }),
+  calories: T.int(),
+  order_index: T.int({ default: 0 }),
+});
+DietMealSchema.index({ diet_plan_id: 1 });
 
-  @Column({ type: DataType.UUID, allowNull: false })
-  diet_plan_id: string;
-
-  @Column({ type: DataType.STRING(100), allowNull: false })
-  meal_name: string;
-
-  @Column(DataType.STRING(10))
-  meal_time: string;
-
-  @Column({ type: DataType.TEXT, allowNull: false })
-  foods: string;
-
-  @Column(DataType.INTEGER)
-  calories: number;
-
-  @Column({ type: DataType.INTEGER, defaultValue: 0 })
-  order_index: number;
-}
+export const DietMeal = { name: 'DietMeal', schema: DietMealSchema };

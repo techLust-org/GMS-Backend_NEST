@@ -1,13 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { InjectModel, InjectConnection } from '@nestjs/sequelize';
-import { Sequelize } from 'sequelize-typescript';
-import { Op } from 'sequelize';
-import { ProductSale, Product, User, Expense } from '../../models';
+import { InjectModel, InjectConnection } from '@nestjs/mongoose';
+import { ClientSession, Connection, Model } from 'mongoose';
+import { ProductSale, Expense } from '../../models';
 import { LedgerService } from '../../shared/ledger.service';
 import { RazorpayService } from '../../shared/razorpay.service';
 import { NotificationService } from '../../shared/notification.service';
 import { AppError } from '../../common/app-error';
 import { ApiPayload } from '../../common/api-payload';
+import { withTransaction } from '../../database/db-utils';
 
 // A cart checkout creates several ProductSale rows sharing one Razorpay
 // order_id; a single/offline sale has no order_id and is its own group.
@@ -62,41 +62,39 @@ const TRANSITIONS: Record<string, string[]> = {
 @Injectable()
 export class OrdersService {
   constructor(
-    @InjectModel(ProductSale) private readonly productSale: typeof ProductSale,
-    @InjectModel(Expense) private readonly expense: typeof Expense,
-    @InjectConnection() private readonly sequelize: Sequelize,
+    @InjectModel(ProductSale.name) private readonly productSale: Model<any>,
+    @InjectModel(Expense.name) private readonly expense: Model<any>,
+    @InjectConnection() private readonly connection: Connection,
     private readonly ledger: LedgerService,
     private readonly razorpay: RazorpayService,
     private readonly notificationService: NotificationService,
   ) {}
 
-  private loadOrderRows(shopId: string, orderKey: string, opts: any = {}) {
+  private loadOrderRows(shopId: string, orderKey: string, session?: ClientSession) {
     const where: any = { shop_id: shopId };
     if (orderKey.startsWith('sale-')) {
-      where.id = orderKey.slice(5);
+      where._id = orderKey.slice(5);
     } else {
       where.order_id = orderKey;
     }
-    return this.productSale.findAll({
-      where,
-      include: [
-        { model: Product, as: 'product' },
-        { model: User, as: 'buyer', attributes: ['id', 'first_name', 'last_name', 'email'] },
-      ],
-      ...opts,
-    });
+    return this.productSale
+      .find(where)
+      .populate([
+        { path: 'product' },
+        { path: 'buyer', select: 'first_name last_name email' },
+      ])
+      .session(session ?? null);
   }
 
   async list(shopId: string, query: any) {
     const { status, page = 1, limit = 10 } = query;
-    const sales: any[] = await this.productSale.findAll({
-      where: { shop_id: shopId },
-      include: [
-        { model: Product, as: 'product', attributes: ['id', 'name', 'photo_url', 'category'] },
-        { model: User, as: 'buyer', attributes: ['id', 'first_name', 'last_name', 'email'] },
-      ],
-      order: [['created_at', 'DESC']],
-    });
+    const sales: any[] = await this.productSale
+      .find({ shop_id: shopId })
+      .populate([
+        { path: 'product', select: 'name photo_url category' },
+        { path: 'buyer', select: 'first_name last_name email' },
+      ])
+      .sort({ createdAt: -1 });
     let groups = groupSales(sales);
     if (status) groups = groups.filter((g) => g.status === status);
 
@@ -109,14 +107,18 @@ export class OrdersService {
   }
 
   async updateStatus(shopId: string, orderKey: string, body: any) {
-    const t: any = await this.sequelize.transaction();
-    try {
-      const { status: nextStatus } = body;
-      if (!['shipped', 'delivered', 'cancelled'].includes(nextStatus)) {
-        throw new AppError('status must be one of: shipped, delivered, cancelled', 400);
-      }
+    const { status: nextStatus } = body;
+    if (!['shipped', 'delivered', 'cancelled'].includes(nextStatus)) {
+      throw new AppError('status must be one of: shipped, delivered, cancelled', 400);
+    }
 
-      const rows: any[] = await this.loadOrderRows(shopId, orderKey, { transaction: t });
+    // The Razorpay refund is an external side effect, so it runs once, after
+    // the stock/ledger changes commit, rather than inside a transaction that
+    // could be retried. Postgres ran it mid-transaction; a refund failure was
+    // never fatal there either, it only shapes the response/notification.
+    let refundTarget = null as { paymentId: string; amount: number } | null;
+    const rows: any[] = await withTransaction(this.connection, async (session) => {
+      const rows: any[] = await this.loadOrderRows(shopId, orderKey, session);
       if (!rows.length) throw new AppError('Order not found', 404);
 
       const currentStatus = rows[0].status;
@@ -128,75 +130,75 @@ export class OrdersService {
       }
 
       const saleIds = rows.map((r) => r.id);
-      let refundInfo: any = null;
+      refundTarget = null;
 
       if (nextStatus === 'cancelled') {
         for (const row of rows) {
-          await row.product.update(
-            { stock_qty: row.product.stock_qty + row.quantity },
-            { transaction: t },
-          );
+          await row.product.set({ stock_qty: row.product.stock_qty + row.quantity }).save({ session });
         }
 
         await this.ledger.removeByReference({
-          shopId, reference: 'sale', referenceId: { [Op.in]: saleIds } as any, transaction: t,
+          shopId, reference: 'sale', referenceId: saleIds, session,
         });
-        await this.expense.destroy({
-          where: { shop_id: shopId, product_sale_id: { [Op.in]: saleIds } },
-          transaction: t,
-        });
+        await this.expense.deleteMany(
+          { shop_id: shopId, product_sale_id: { $in: saleIds } },
+          { session },
+        );
 
         const paidRow = rows.find((r) => r.payment_mode === 'razorpay' && r.transaction_id);
         if (paidRow) {
           const totalAmount = rows.reduce((sum, r) => sum + parseFloat(r.total_price), 0);
-          try {
-            await this.razorpay.refund(paidRow.transaction_id, totalAmount);
-            refundInfo = { attempted: true, success: true, amount: totalAmount };
-          } catch (refundErr: any) {
-            refundInfo = { attempted: true, success: false, amount: totalAmount, error: refundErr.message };
-          }
+          refundTarget = { paymentId: paidRow.transaction_id, amount: totalAmount };
         }
       }
 
       for (const row of rows) {
-        await row.update({ status: nextStatus }, { transaction: t });
+        await row.set({ status: nextStatus }).save({ session });
       }
+      return rows;
+    });
 
-      await t.commit();
-
+    const saleIds = rows.map((r) => r.id);
+    let refundInfo: any = null;
+    if (refundTarget) {
+      const { paymentId, amount: totalAmount } = refundTarget;
       try {
-        const buyerId = rows[0].member_id;
-        if (buyerId) {
-          const itemsDesc = rows.map((r) => `${r.product.name} × ${r.quantity}`).join(', ');
-          let message;
-          if (nextStatus === 'cancelled') {
-            message = refundInfo?.success
-              ? `Your order (${itemsDesc}) was cancelled and ₹${refundInfo.amount.toFixed(0)} has been refunded.`
-              : refundInfo?.attempted
-                ? `Your order (${itemsDesc}) was cancelled. A refund is being processed — contact the gym if it doesn't arrive shortly.`
-                : `Your order (${itemsDesc}) was cancelled by the gym.`;
-          } else {
-            message = `Your order (${itemsDesc}) has been ${nextStatus}.`;
-          }
-          await this.notificationService.createNotification({
-            userId: buyerId,
-            shopId,
-            type: `order_${nextStatus}`,
-            title: `Order ${nextStatus[0].toUpperCase()}${nextStatus.slice(1)}`,
-            message,
-            relatedId: saleIds[0],
-          });
-        }
-      } catch (notifyErr) {
-        // eslint-disable-next-line no-console
-        console.error(`Failed to send order_${nextStatus} notification:`, notifyErr);
+        await this.razorpay.refund(paymentId, totalAmount);
+        refundInfo = { attempted: true, success: true, amount: totalAmount };
+      } catch (refundErr: any) {
+        refundInfo = { attempted: true, success: false, amount: totalAmount, error: refundErr.message };
       }
-
-      const [group] = groupSales(rows);
-      return new ApiPayload({ ...group, refund: refundInfo }, `Order marked ${nextStatus}`);
-    } catch (err) {
-      if (!t.finished) await t.rollback();
-      throw err;
     }
+
+    try {
+      const buyerId = rows[0].member_id;
+      if (buyerId) {
+        const itemsDesc = rows.map((r) => `${r.product.name} × ${r.quantity}`).join(', ');
+        let message;
+        if (nextStatus === 'cancelled') {
+          message = refundInfo?.success
+            ? `Your order (${itemsDesc}) was cancelled and ₹${refundInfo.amount.toFixed(0)} has been refunded.`
+            : refundInfo?.attempted
+              ? `Your order (${itemsDesc}) was cancelled. A refund is being processed — contact the gym if it doesn't arrive shortly.`
+              : `Your order (${itemsDesc}) was cancelled by the gym.`;
+        } else {
+          message = `Your order (${itemsDesc}) has been ${nextStatus}.`;
+        }
+        await this.notificationService.createNotification({
+          userId: buyerId,
+          shopId,
+          type: `order_${nextStatus}`,
+          title: `Order ${nextStatus[0].toUpperCase()}${nextStatus.slice(1)}`,
+          message,
+          relatedId: saleIds[0],
+        });
+      }
+    } catch (notifyErr) {
+      // eslint-disable-next-line no-console
+      console.error(`Failed to send order_${nextStatus} notification:`, notifyErr);
+    }
+
+    const [group] = groupSales(rows);
+    return new ApiPayload({ ...group, refund: refundInfo }, `Order marked ${nextStatus}`);
   }
 }

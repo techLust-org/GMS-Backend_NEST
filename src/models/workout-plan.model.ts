@@ -1,36 +1,17 @@
-import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
+import { defineSchema, T } from './schema-helpers';
 
-@Table({ tableName: 'workout_plans', underscored: true })
-export class WorkoutPlan extends Model {
-  @PrimaryKey
-  @Default(DataType.UUIDV4)
-  @Column(DataType.UUID)
-  id: string;
+export const WorkoutPlanSchema = defineSchema('workout_plans', {
+  shop_id: T.uuid({ required: true }),
+  trainer_id: T.uuid({ required: true }),
+  member_id: T.uuid({ required: true }),
+  title: T.string({ required: true }),
+  description: T.text(),
+  goal: T.string(),
+  is_active: T.bool({ default: true }),
+  start_date: T.dateOnly(),
+  end_date: T.dateOnly(),
+});
+WorkoutPlanSchema.index({ member_id: 1 });
+WorkoutPlanSchema.index({ shop_id: 1 });
 
-  @Column({ type: DataType.UUID, allowNull: false })
-  shop_id: string;
-
-  @Column({ type: DataType.UUID, allowNull: false })
-  trainer_id: string;
-
-  @Column({ type: DataType.UUID, allowNull: false })
-  member_id: string;
-
-  @Column({ type: DataType.STRING(150), allowNull: false })
-  title: string;
-
-  @Column(DataType.TEXT)
-  description: string;
-
-  @Column(DataType.STRING(100))
-  goal: string;
-
-  @Column({ type: DataType.BOOLEAN, defaultValue: true })
-  is_active: boolean;
-
-  @Column(DataType.DATEONLY)
-  start_date: string;
-
-  @Column(DataType.DATEONLY)
-  end_date: string;
-}
+export const WorkoutPlan = { name: 'WorkoutPlan', schema: WorkoutPlanSchema };

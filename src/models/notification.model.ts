@@ -1,38 +1,24 @@
-import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
+import { defineSchema, T } from './schema-helpers';
 
-@Table({ tableName: 'notifications', underscored: true })
-export class Notification extends Model {
-  @PrimaryKey
-  @Default(DataType.UUIDV4)
-  @Column(DataType.UUID)
-  id: string;
-
-  @Column(DataType.UUID)
-  shop_id: string;
-
-  @Column({ type: DataType.UUID, allowNull: false })
-  user_id: string;
-
-  @Column({
-    type: DataType.ENUM(
+export const NotificationSchema = defineSchema('notifications', {
+  shop_id: T.uuid(),
+  user_id: T.uuid({ required: true }),
+  type: T.enumOf(
+    [
       'subscription_expiry', 'trainer_assigned', 'trainer_unassigned',
       'trainer_absence', 'gym_announcement', 'subscription_purchased',
       'order_placed', 'order_shipped', 'order_delivered', 'order_cancelled',
+      'role_promotion',
       'document_uploaded', 'document_verified', 'document_rejected',
-    ),
-    allowNull: false,
-  })
-  type: string;
+    ],
+    { required: true },
+  ),
+  title: T.string({ required: true }),
+  message: T.text({ required: true }),
+  is_read: T.bool({ default: false }),
+  related_id: T.uuid(),
+});
+NotificationSchema.index({ user_id: 1, is_read: 1 });
+NotificationSchema.index({ user_id: 1, createdAt: -1 });
 
-  @Column({ type: DataType.STRING(200), allowNull: false })
-  title: string;
-
-  @Column({ type: DataType.TEXT, allowNull: false })
-  message: string;
-
-  @Column({ type: DataType.BOOLEAN, defaultValue: false })
-  is_read: boolean;
-
-  @Column(DataType.UUID)
-  related_id: string;
-}
+export const Notification = { name: 'Notification', schema: NotificationSchema };

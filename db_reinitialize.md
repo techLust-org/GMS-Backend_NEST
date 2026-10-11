@@ -1,4 +1,6 @@
-For future reference, the full reset is just 3 commands from the backend/ folder:
-  npx sequelize db:migrate:undo:all   # drop all tables
-  npx sequelize db:migrate            # recreate tables
-  npx sequelize db:seed:all           # insert seed data
+For future reference, the full reset is one command from the backend_nest/ folder:
+  npm run db:reset      # drop the MongoDB database and re-seed it
+
+Or step by step:
+  npm run db:seed:undo  # drop the database
+  npm run db:seed       # insert seed data (collections and indexes are created automatically)

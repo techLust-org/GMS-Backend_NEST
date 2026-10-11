@@ -1,33 +1,17 @@
-import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
+import { defineSchema, T, todayDateOnly } from './schema-helpers';
 
-@Table({ tableName: 'payments', underscored: true })
-export class Payment extends Model {
-  @PrimaryKey
-  @Default(DataType.UUIDV4)
-  @Column(DataType.UUID)
-  id: string;
+export const PaymentSchema = defineSchema('payments', {
+  shop_id: T.uuid({ required: true }),
+  member_id: T.uuid({ required: true }),
+  subscription_id: T.uuid(),
+  product_sale_id: T.uuid(),
+  amount: T.decimal({ required: true }),
+  payment_date: T.dateOnly({ default: todayDateOnly }),
+  payment_method: T.string({ default: 'cash' }),
+  notes: T.text(),
+});
+PaymentSchema.index({ shop_id: 1 });
+PaymentSchema.index({ member_id: 1 });
+PaymentSchema.index({ payment_date: 1 });
 
-  @Column({ type: DataType.UUID, allowNull: false })
-  shop_id: string;
-
-  @Column({ type: DataType.UUID, allowNull: false })
-  member_id: string;
-
-  @Column(DataType.UUID)
-  subscription_id: string;
-
-  @Column(DataType.UUID)
-  product_sale_id: string;
-
-  @Column({ type: DataType.DECIMAL(10, 2), allowNull: false })
-  amount: number;
-
-  @Column({ type: DataType.DATEONLY, defaultValue: DataType.NOW })
-  payment_date: string;
-
-  @Column({ type: DataType.STRING(50), defaultValue: 'cash' })
-  payment_method: string;
-
-  @Column(DataType.TEXT)
-  notes: string;
-}
+export const Payment = { name: 'Payment', schema: PaymentSchema };

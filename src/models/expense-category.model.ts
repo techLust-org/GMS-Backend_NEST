@@ -1,18 +1,10 @@
-import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
+import { defineSchema, T } from './schema-helpers';
 
-@Table({ tableName: 'expense_categories', underscored: true })
-export class ExpenseCategory extends Model {
-  @PrimaryKey
-  @Default(DataType.UUIDV4)
-  @Column(DataType.UUID)
-  id: string;
+export const ExpenseCategorySchema = defineSchema('expense_categories', {
+  shop_id: T.uuid({ required: true }),
+  name: T.string({ required: true }),
+  type: T.enumOf(['credit', 'debit'], { required: true, default: 'debit' }),
+});
+ExpenseCategorySchema.index({ shop_id: 1 });
 
-  @Column({ type: DataType.UUID, allowNull: false })
-  shop_id: string;
-
-  @Column({ type: DataType.STRING(100), allowNull: false })
-  name: string;
-
-  @Column({ type: DataType.ENUM('credit', 'debit'), allowNull: false, defaultValue: 'debit' })
-  type: string;
-}
+export const ExpenseCategory = { name: 'ExpenseCategory', schema: ExpenseCategorySchema };

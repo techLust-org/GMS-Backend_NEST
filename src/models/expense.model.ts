@@ -1,36 +1,18 @@
-import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
+import { defineSchema, T } from './schema-helpers';
 
-@Table({ tableName: 'expenses', underscored: true })
-export class Expense extends Model {
-  @PrimaryKey
-  @Default(DataType.UUIDV4)
-  @Column(DataType.UUID)
-  id: string;
+export const ExpenseSchema = defineSchema('expenses', {
+  shop_id: T.uuid({ required: true }),
+  category_id: T.uuid({ required: true }),
+  description: T.string({ required: true }),
+  amount: T.decimal({ required: true }),
+  expense_date: T.dateOnly(),
+  paid_to: T.string(),
+  trainer_id: T.uuid(),
+  invoice_url: T.text(),
+  product_sale_id: T.uuid(),
+});
+ExpenseSchema.index({ shop_id: 1 });
+ExpenseSchema.index({ expense_date: 1 });
+ExpenseSchema.index({ category_id: 1 });
 
-  @Column({ type: DataType.UUID, allowNull: false })
-  shop_id: string;
-
-  @Column({ type: DataType.UUID, allowNull: false })
-  category_id: string;
-
-  @Column({ type: DataType.STRING(255), allowNull: false })
-  description: string;
-
-  @Column({ type: DataType.DECIMAL(10, 2), allowNull: false })
-  amount: number;
-
-  @Column(DataType.DATEONLY)
-  expense_date: string;
-
-  @Column(DataType.STRING(150))
-  paid_to: string;
-
-  @Column(DataType.UUID)
-  trainer_id: string;
-
-  @Column(DataType.TEXT)
-  invoice_url: string;
-
-  @Column(DataType.UUID)
-  product_sale_id: string;
-}
+export const Expense = { name: 'Expense', schema: ExpenseSchema };

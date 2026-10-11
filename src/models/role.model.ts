@@ -1,12 +1,8 @@
-import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
+import { defineSchema, T } from './schema-helpers';
 
-@Table({ tableName: 'roles', underscored: true })
-export class Role extends Model {
-  @PrimaryKey
-  @Default(DataType.UUIDV4)
-  @Column(DataType.UUID)
-  id: string;
+export const RoleSchema = defineSchema('roles', {
+  name: T.string({ required: true }),
+});
+RoleSchema.index({ name: 1 }, { unique: true });
 
-  @Column({ type: DataType.STRING(20), allowNull: false, unique: true })
-  name: string;
-}
+export const Role = { name: 'Role', schema: RoleSchema };

@@ -1,145 +1,142 @@
-import { Role } from './role.model';
-import { User } from './user.model';
-import { Shop } from './shop.model';
-import { ShopSubscriptionPlan } from './shop-subscription-plan.model';
-import { ShopSubscription } from './shop-subscription.model';
-import { SubscriptionPlan } from './subscription-plan.model';
-import { Subscription } from './subscription.model';
-import { Payment } from './payment.model';
-import { Attendance } from './attendance.model';
-import { TrainerMember } from './trainer-member.model';
-import { WorkoutPlan } from './workout-plan.model';
-import { WorkoutDay } from './workout-day.model';
-import { WorkoutExercise } from './workout-exercise.model';
-import { DietPlan } from './diet-plan.model';
-import { DietMeal } from './diet-meal.model';
-import { Product } from './product.model';
-import { ProductSale } from './product-sale.model';
-import { ExpenseCategory } from './expense-category.model';
-import { Expense } from './expense.model';
-import { Ledger } from './ledger.model';
-import { Notification } from './notification.model';
-import { TrainerAbsence } from './trainer-absence.model';
-import { Referral } from './referral.model';
-import { UserDocument } from './user-document.model';
-import { DocumentAccessLog } from './document-access-log.model';
+import { belongsTo, hasMany, hasOne } from './schema-helpers';
+import { RoleSchema } from './role.model';
+import { UserSchema } from './user.model';
+import { ShopSchema } from './shop.model';
+import { ShopSubscriptionPlanSchema } from './shop-subscription-plan.model';
+import { ShopSubscriptionSchema } from './shop-subscription.model';
+import { SubscriptionPlanSchema } from './subscription-plan.model';
+import { SubscriptionSchema } from './subscription.model';
+import { PaymentSchema } from './payment.model';
+import { AttendanceSchema } from './attendance.model';
+import { TrainerMemberSchema } from './trainer-member.model';
+import { WorkoutPlanSchema } from './workout-plan.model';
+import { WorkoutDaySchema } from './workout-day.model';
+import { WorkoutExerciseSchema } from './workout-exercise.model';
+import { DietPlanSchema } from './diet-plan.model';
+import { DietMealSchema } from './diet-meal.model';
+import { ProductSchema } from './product.model';
+import { ProductSaleSchema } from './product-sale.model';
+import { ExpenseCategorySchema } from './expense-category.model';
+import { ExpenseSchema } from './expense.model';
+import { LedgerSchema } from './ledger.model';
+import { NotificationSchema } from './notification.model';
+import { TrainerAbsenceSchema } from './trainer-absence.model';
+import { ReferralSchema } from './referral.model';
+import { UserDocumentSchema } from './user-document.model';
+import { DocumentAccessLogSchema } from './document-access-log.model';
 
-let done = false;
+// Mirrors the old Sequelize associations. Each one is a virtual populate
+// named exactly like the old include alias (e.g. `.populate('Role')`,
+// `.populate('plan')`), so the nested keys in JSON responses are unchanged.
+// Must run before the schemas are compiled into models — models/index.ts
+// imports this file for that side effect.
 
-// Mirrors backend/models/index.js verbatim. Wired once at bootstrap because the
-// controllers rely on these exact include aliases.
-export function setupAssociations(): void {
-  if (done) return;
-  done = true;
+// Role <-> User
+hasMany(RoleSchema, 'Users', 'User', 'role_id');
+belongsTo(UserSchema, 'Role', 'Role', 'role_id');
 
-  // Role <-> User
-  Role.hasMany(User, { foreignKey: 'role_id' });
-  User.belongsTo(Role, { foreignKey: 'role_id' });
+// Shop <-> owner (User) and tenant membership
+belongsTo(ShopSchema, 'owner', 'User', 'owner_id');
+hasOne(UserSchema, 'ownedShop', 'Shop', 'owner_id');
+hasMany(ShopSchema, 'members', 'User', 'shop_id');
+belongsTo(UserSchema, 'shop', 'Shop', 'shop_id');
 
-  // Shop <-> owner (User) and tenant membership
-  Shop.belongsTo(User, { foreignKey: 'owner_id', as: 'owner' });
-  User.hasOne(Shop, { foreignKey: 'owner_id', as: 'ownedShop' });
-  Shop.hasMany(User, { foreignKey: 'shop_id', as: 'members' });
-  User.belongsTo(Shop, { foreignKey: 'shop_id', as: 'shop' });
+// ShopSubscriptionPlan <-> ShopSubscription
+hasMany(ShopSubscriptionPlanSchema, 'ShopSubscriptions', 'ShopSubscription', 'plan_id');
+belongsTo(ShopSubscriptionSchema, 'plan', 'ShopSubscriptionPlan', 'plan_id');
 
-  // ShopSubscriptionPlan <-> ShopSubscription
-  ShopSubscriptionPlan.hasMany(ShopSubscription, { foreignKey: 'plan_id' });
-  ShopSubscription.belongsTo(ShopSubscriptionPlan, { foreignKey: 'plan_id', as: 'plan' });
+// Shop <-> ShopSubscription
+hasMany(ShopSchema, 'subscriptions', 'ShopSubscription', 'shop_id');
+belongsTo(ShopSubscriptionSchema, 'shop', 'Shop', 'shop_id');
 
-  // Shop <-> ShopSubscription
-  Shop.hasMany(ShopSubscription, { foreignKey: 'shop_id', as: 'subscriptions' });
-  ShopSubscription.belongsTo(Shop, { foreignKey: 'shop_id', as: 'shop' });
+// User (member) <-> Subscription
+hasMany(UserSchema, 'subscriptions', 'Subscription', 'member_id');
+belongsTo(SubscriptionSchema, 'member', 'User', 'member_id');
 
-  // User (member) <-> Subscription
-  User.hasMany(Subscription, { foreignKey: 'member_id', as: 'subscriptions' });
-  Subscription.belongsTo(User, { foreignKey: 'member_id', as: 'member' });
+// SubscriptionPlan <-> Subscription
+hasMany(SubscriptionPlanSchema, 'Subscriptions', 'Subscription', 'plan_id');
+belongsTo(SubscriptionSchema, 'plan', 'SubscriptionPlan', 'plan_id');
 
-  // SubscriptionPlan <-> Subscription
-  SubscriptionPlan.hasMany(Subscription, { foreignKey: 'plan_id' });
-  Subscription.belongsTo(SubscriptionPlan, { foreignKey: 'plan_id', as: 'plan' });
+// Payment
+hasMany(UserSchema, 'payments', 'Payment', 'member_id');
+belongsTo(PaymentSchema, 'member', 'User', 'member_id');
+hasMany(SubscriptionSchema, 'Payments', 'Payment', 'subscription_id');
+belongsTo(PaymentSchema, 'Subscription', 'Subscription', 'subscription_id');
+hasMany(ProductSaleSchema, 'Payments', 'Payment', 'product_sale_id');
+belongsTo(PaymentSchema, 'ProductSale', 'ProductSale', 'product_sale_id');
 
-  // Payment
-  User.hasMany(Payment, { foreignKey: 'member_id', as: 'payments' });
-  Payment.belongsTo(User, { foreignKey: 'member_id', as: 'member' });
-  Subscription.hasMany(Payment, { foreignKey: 'subscription_id' });
-  Payment.belongsTo(Subscription, { foreignKey: 'subscription_id' });
-  ProductSale.hasMany(Payment, { foreignKey: 'product_sale_id' });
-  Payment.belongsTo(ProductSale, { foreignKey: 'product_sale_id' });
+// Attendance
+hasMany(UserSchema, 'attendances', 'Attendance', 'member_id');
+belongsTo(AttendanceSchema, 'member', 'User', 'member_id');
 
-  // Attendance
-  User.hasMany(Attendance, { foreignKey: 'member_id', as: 'attendances' });
-  Attendance.belongsTo(User, { foreignKey: 'member_id', as: 'member' });
+// TrainerMember
+hasMany(UserSchema, 'trainerAssignments', 'TrainerMember', 'trainer_id');
+hasMany(UserSchema, 'memberAssignments', 'TrainerMember', 'member_id');
+belongsTo(TrainerMemberSchema, 'trainer', 'User', 'trainer_id');
+belongsTo(TrainerMemberSchema, 'member', 'User', 'member_id');
 
-  // TrainerMember
-  User.hasMany(TrainerMember, { foreignKey: 'trainer_id', as: 'trainerAssignments' });
-  User.hasMany(TrainerMember, { foreignKey: 'member_id', as: 'memberAssignments' });
-  TrainerMember.belongsTo(User, { foreignKey: 'trainer_id', as: 'trainer' });
-  TrainerMember.belongsTo(User, { foreignKey: 'member_id', as: 'member' });
+// WorkoutPlan
+hasMany(UserSchema, 'createdWorkoutPlans', 'WorkoutPlan', 'trainer_id');
+hasMany(UserSchema, 'workoutPlans', 'WorkoutPlan', 'member_id');
+belongsTo(WorkoutPlanSchema, 'trainer', 'User', 'trainer_id');
+belongsTo(WorkoutPlanSchema, 'member', 'User', 'member_id');
+hasMany(WorkoutPlanSchema, 'days', 'WorkoutDay', 'workout_plan_id');
+belongsTo(WorkoutDaySchema, 'WorkoutPlan', 'WorkoutPlan', 'workout_plan_id');
+hasMany(WorkoutDaySchema, 'exercises', 'WorkoutExercise', 'workout_day_id');
+belongsTo(WorkoutExerciseSchema, 'WorkoutDay', 'WorkoutDay', 'workout_day_id');
 
-  // WorkoutPlan
-  User.hasMany(WorkoutPlan, { foreignKey: 'trainer_id', as: 'createdWorkoutPlans' });
-  User.hasMany(WorkoutPlan, { foreignKey: 'member_id', as: 'workoutPlans' });
-  WorkoutPlan.belongsTo(User, { foreignKey: 'trainer_id', as: 'trainer' });
-  WorkoutPlan.belongsTo(User, { foreignKey: 'member_id', as: 'member' });
-  WorkoutPlan.hasMany(WorkoutDay, { foreignKey: 'workout_plan_id', as: 'days', onDelete: 'CASCADE' });
-  WorkoutDay.belongsTo(WorkoutPlan, { foreignKey: 'workout_plan_id' });
-  WorkoutDay.hasMany(WorkoutExercise, { foreignKey: 'workout_day_id', as: 'exercises', onDelete: 'CASCADE' });
-  WorkoutExercise.belongsTo(WorkoutDay, { foreignKey: 'workout_day_id' });
+// DietPlan
+hasMany(UserSchema, 'createdDietPlans', 'DietPlan', 'trainer_id');
+hasMany(UserSchema, 'dietPlans', 'DietPlan', 'member_id');
+belongsTo(DietPlanSchema, 'trainer', 'User', 'trainer_id');
+belongsTo(DietPlanSchema, 'member', 'User', 'member_id');
+hasMany(DietPlanSchema, 'meals', 'DietMeal', 'diet_plan_id');
+belongsTo(DietMealSchema, 'DietPlan', 'DietPlan', 'diet_plan_id');
 
-  // DietPlan
-  User.hasMany(DietPlan, { foreignKey: 'trainer_id', as: 'createdDietPlans' });
-  User.hasMany(DietPlan, { foreignKey: 'member_id', as: 'dietPlans' });
-  DietPlan.belongsTo(User, { foreignKey: 'trainer_id', as: 'trainer' });
-  DietPlan.belongsTo(User, { foreignKey: 'member_id', as: 'member' });
-  DietPlan.hasMany(DietMeal, { foreignKey: 'diet_plan_id', as: 'meals', onDelete: 'CASCADE' });
-  DietMeal.belongsTo(DietPlan, { foreignKey: 'diet_plan_id' });
+// Product <-> ProductSale
+hasMany(ProductSchema, 'sales', 'ProductSale', 'product_id');
+belongsTo(ProductSaleSchema, 'product', 'Product', 'product_id');
+hasMany(UserSchema, 'productPurchases', 'ProductSale', 'member_id');
+belongsTo(ProductSaleSchema, 'buyer', 'User', 'member_id');
 
-  // Product <-> ProductSale
-  Product.hasMany(ProductSale, { foreignKey: 'product_id', as: 'sales' });
-  ProductSale.belongsTo(Product, { foreignKey: 'product_id', as: 'product' });
-  User.hasMany(ProductSale, { foreignKey: 'member_id', as: 'productPurchases' });
-  ProductSale.belongsTo(User, { foreignKey: 'member_id', as: 'buyer' });
+// ExpenseCategory <-> Expense
+hasMany(ExpenseCategorySchema, 'expenses', 'Expense', 'category_id');
+belongsTo(ExpenseSchema, 'category', 'ExpenseCategory', 'category_id');
+hasMany(UserSchema, 'salaryExpenses', 'Expense', 'trainer_id');
+belongsTo(ExpenseSchema, 'trainer', 'User', 'trainer_id');
 
-  // ExpenseCategory <-> Expense
-  ExpenseCategory.hasMany(Expense, { foreignKey: 'category_id', as: 'expenses' });
-  Expense.belongsTo(ExpenseCategory, { foreignKey: 'category_id', as: 'category' });
-  User.hasMany(Expense, { foreignKey: 'trainer_id', as: 'salaryExpenses' });
-  Expense.belongsTo(User, { foreignKey: 'trainer_id', as: 'trainer' });
+// ProductSale <-> Expense (auto-mirrored "Product Sell" transaction row)
+hasMany(ProductSaleSchema, 'mirrorExpenses', 'Expense', 'product_sale_id');
+belongsTo(ExpenseSchema, 'productSale', 'ProductSale', 'product_sale_id');
 
-  // ProductSale <-> Expense (auto-mirrored "Product Sell" transaction row)
-  ProductSale.hasMany(Expense, { foreignKey: 'product_sale_id', as: 'mirrorExpenses' });
-  Expense.belongsTo(ProductSale, { foreignKey: 'product_sale_id', as: 'productSale' });
+// Notification
+hasMany(UserSchema, 'notifications', 'Notification', 'user_id');
+belongsTo(NotificationSchema, 'user', 'User', 'user_id');
 
-  // Notification
-  User.hasMany(Notification, { foreignKey: 'user_id', as: 'notifications' });
-  Notification.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+// TrainerAbsence
+hasMany(UserSchema, 'absences', 'TrainerAbsence', 'trainer_id');
+belongsTo(TrainerAbsenceSchema, 'trainer', 'User', 'trainer_id');
 
-  // TrainerAbsence
-  User.hasMany(TrainerAbsence, { foreignKey: 'trainer_id', as: 'absences' });
-  TrainerAbsence.belongsTo(User, { foreignKey: 'trainer_id', as: 'trainer' });
+// Referral — a shop refers other shops (as referrer), and is referred by
+// at most one shop (as referred, via referred_by_shop_id on Shop itself).
+belongsTo(ShopSchema, 'referredByShop', 'Shop', 'referred_by_shop_id');
+hasMany(ShopSchema, 'referralsGiven', 'Referral', 'referrer_shop_id');
+hasOne(ShopSchema, 'referralReceived', 'Referral', 'referred_shop_id');
+belongsTo(ReferralSchema, 'referrerShop', 'Shop', 'referrer_shop_id');
+belongsTo(ReferralSchema, 'referredShop', 'Shop', 'referred_shop_id');
 
-  // Referral — a shop refers other shops (as referrer), and is referred by
-  // at most one shop (as referred, via referred_by_shop_id on Shop itself).
-  Shop.belongsTo(Shop, { foreignKey: 'referred_by_shop_id', as: 'referredByShop' });
-  Shop.hasMany(Referral, { foreignKey: 'referrer_shop_id', as: 'referralsGiven' });
-  Shop.hasOne(Referral, { foreignKey: 'referred_shop_id', as: 'referralReceived' });
-  Referral.belongsTo(Shop, { foreignKey: 'referrer_shop_id', as: 'referrerShop' });
-  Referral.belongsTo(Shop, { foreignKey: 'referred_shop_id', as: 'referredShop' });
+// UserDocument — a member/trainer's uploaded ID, reviewed by the shop owner.
+hasMany(UserSchema, 'documents', 'UserDocument', 'user_id');
+belongsTo(UserDocumentSchema, 'user', 'User', 'user_id');
+belongsTo(UserDocumentSchema, 'reviewer', 'User', 'reviewed_by');
 
-  // UserDocument — a member/trainer's uploaded ID, reviewed by the shop owner.
-  User.hasMany(UserDocument, { foreignKey: 'user_id', as: 'documents' });
-  UserDocument.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
-  UserDocument.belongsTo(User, { foreignKey: 'reviewed_by', as: 'reviewer' });
+// DocumentAccessLog — audit trail of admin views of an original document.
+hasMany(UserDocumentSchema, 'accessLogs', 'DocumentAccessLog', 'document_id');
+belongsTo(DocumentAccessLogSchema, 'document', 'UserDocument', 'document_id');
+belongsTo(DocumentAccessLogSchema, 'viewer', 'User', 'viewed_by');
 
-  // DocumentAccessLog — audit trail of admin views of an original document.
-  UserDocument.hasMany(DocumentAccessLog, { foreignKey: 'document_id', as: 'accessLogs' });
-  DocumentAccessLog.belongsTo(UserDocument, { foreignKey: 'document_id', as: 'document' });
-  DocumentAccessLog.belongsTo(User, { foreignKey: 'viewed_by', as: 'viewer' });
-
-  // Tenant (Shop) back-references for shop-scoped models
-  [Subscription, Payment, Attendance, TrainerMember, WorkoutPlan, DietPlan,
-    Product, ProductSale, SubscriptionPlan, Expense, ExpenseCategory, Ledger,
-    Notification, TrainerAbsence, UserDocument, DocumentAccessLog].forEach((M: any) => {
-    M.belongsTo(Shop, { foreignKey: 'shop_id', as: 'shop' });
-  });
-}
+// Tenant (Shop) back-references for shop-scoped models
+[SubscriptionSchema, PaymentSchema, AttendanceSchema, TrainerMemberSchema, WorkoutPlanSchema,
+  DietPlanSchema, ProductSchema, ProductSaleSchema, SubscriptionPlanSchema, ExpenseSchema,
+  ExpenseCategorySchema, LedgerSchema, NotificationSchema, TrainerAbsenceSchema, UserDocumentSchema,
+  DocumentAccessLogSchema].forEach((schema) => belongsTo(schema, 'shop', 'Shop', 'shop_id'));

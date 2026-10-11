@@ -1,3 +1,4 @@
+import './associations';
 import { Role } from './role.model';
 import { User } from './user.model';
 import { Shop } from './shop.model';
@@ -53,9 +54,11 @@ export * from './otp-request.model';
 export * from './referral.model';
 export * from './user-document.model';
 export * from './document-access-log.model';
-export { setupAssociations } from './associations';
+export { toDateOnly } from './schema-helpers';
 
-export const ALL_MODELS = [
+// Every model, registered once globally (DatabaseModule) so any service can
+// inject any model and populate() can resolve every association by name.
+export const MODEL_DEFINITIONS = [
   Role, User, Shop, ShopSubscriptionPlan, ShopSubscription, SubscriptionPlan,
   Subscription, Payment, Attendance, TrainerMember, WorkoutPlan, WorkoutDay,
   WorkoutExercise, DietPlan, DietMeal, Product, ProductSale, ExpenseCategory,

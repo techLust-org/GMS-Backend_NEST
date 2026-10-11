@@ -1,11 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectModel } from '@nestjs/sequelize';
+import { InjectModel, InjectConnection } from '@nestjs/mongoose';
+import { Connection, Model } from 'mongoose';
 import sharp from 'sharp';
-import { User, Role, Shop, UserDocument, DocumentAccessLog } from '../models';
+import { User, Shop, UserDocument, DocumentAccessLog } from '../models';
 import { S3Service } from '../shared/s3.service';
 import { NotificationService } from '../shared/notification.service';
 import { AppError } from '../common/app-error';
 import { ApiPayload } from '../common/api-payload';
+import { withTransaction } from '../database/db-utils';
 
 // Signed URL to the ORIGINAL file is only ever minted by viewOriginal(),
 // one-at-a-time, short-lived, and audit-logged. Every other read path
@@ -20,10 +22,11 @@ export class DocumentsService {
   private readonly logger = new Logger(DocumentsService.name);
 
   constructor(
-    @InjectModel(UserDocument) private readonly userDocument: typeof UserDocument,
-    @InjectModel(DocumentAccessLog) private readonly accessLog: typeof DocumentAccessLog,
-    @InjectModel(User) private readonly user: typeof User,
-    @InjectModel(Shop) private readonly shop: typeof Shop,
+    @InjectModel(UserDocument.name) private readonly userDocument: Model<any>,
+    @InjectModel(DocumentAccessLog.name) private readonly accessLog: Model<any>,
+    @InjectModel(User.name) private readonly user: Model<any>,
+    @InjectModel(Shop.name) private readonly shop: Model<any>,
+    @InjectConnection() private readonly connection: Connection,
     private readonly s3: S3Service,
     private readonly notificationService: NotificationService,
   ) {}
@@ -48,7 +51,7 @@ export class DocumentsService {
         .toBuffer();
       const previewKey = this.previewKeyFor(doc.file_key);
       await this.s3.putObjectBuffer(previewKey, preview, 'image/jpeg');
-      await doc.update({ preview_key: previewKey });
+      await doc.set({ preview_key: previewKey }).save();
     } catch (err) {
       this.logger.warn(`Preview generation failed for document ${doc.id}: ${err}`);
     }
@@ -77,13 +80,13 @@ export class DocumentsService {
       content_type: contentType,
       original_filename: originalFilename || null,
       status: 'pending',
-    } as any);
+    });
 
     await this.generatePreview(doc);
 
     try {
-      const shopRow: any = await this.shop.findByPk(shopId, { attributes: ['owner_id'] });
-      const uploader: any = await this.user.findByPk(userId, { attributes: ['first_name', 'last_name'] });
+      const shopRow: any = await this.shop.findById(shopId).select('owner_id');
+      const uploader: any = await this.user.findById(userId).select('first_name last_name');
       if (shopRow?.owner_id) {
         await this.notificationService.createNotification({
           userId: shopRow.owner_id,
@@ -105,10 +108,7 @@ export class DocumentsService {
   }
 
   async listMine(userId: string) {
-    const docs = await this.userDocument.findAll({
-      where: { user_id: userId },
-      order: [['created_at', 'DESC']],
-    });
+    const docs = await this.userDocument.find({ user_id: userId }).sort({ createdAt: -1 });
     const withUrls = await Promise.all(docs.map(async (d: any) => ({
       ...d.toJSON(),
       fileUrl: await this.s3.getViewUrl(d.file_key),
@@ -117,12 +117,16 @@ export class DocumentsService {
   }
 
   async removeMine(userId: string, id: string) {
-    const doc: any = await this.userDocument.findOne({ where: { id, user_id: userId } });
+    const doc: any = await this.userDocument.findOne({ _id: id, user_id: userId });
     if (!doc) throw new AppError('Document not found', 404);
     if (doc.status === 'verified') throw new AppError('A verified document cannot be deleted', 400);
 
     const { file_key, preview_key } = doc;
-    await doc.destroy();
+    // Its access-log rows went with it via ON DELETE CASCADE.
+    await withTransaction(this.connection, async (session) => {
+      await this.accessLog.deleteMany({ document_id: doc.id }, { session });
+      await doc.deleteOne({ session });
+    });
     this.s3.deleteObject(file_key).catch(() => {});
     if (preview_key) this.s3.deleteObject(preview_key).catch(() => {});
 
@@ -139,19 +143,24 @@ export class DocumentsService {
     if (userId) where.user_id = userId;
 
     const offset = (page - 1) * limit;
-    const { count, rows } = await this.userDocument.findAndCountAll({
-      where,
-      include: [{
-        model: User, as: 'user', attributes: ['id', 'first_name', 'last_name', 'email'],
-        include: [{ model: Role, attributes: ['name'] }],
-      }],
-      order: [['created_at', 'ASC']],
-      limit: parseInt(limit),
-      offset: parseInt(String(offset), 10),
-    });
+    const [count, rows] = await Promise.all([
+      this.userDocument.countDocuments(where),
+      this.userDocument
+        .find(where)
+        .populate({
+          path: 'user',
+          select: 'first_name last_name email role_id',
+          populate: { path: 'Role', select: 'name -_id' },
+        })
+        .sort({ createdAt: 1 })
+        .skip(parseInt(String(offset), 10))
+        .limit(parseInt(limit)),
+    ]);
 
     const withPreviews = await Promise.all(rows.map(async (d: any) => {
       const plain = d.toJSON();
+      // role_id is only loaded to resolve the user's Role.
+      if (plain.user) delete plain.user.role_id;
       plain.previewUrl = plain.preview_key
         ? await this.s3.getViewUrl(plain.preview_key, PREVIEW_VIEW_EXPIRY_SECONDS)
         : null;
@@ -165,7 +174,7 @@ export class DocumentsService {
 
   // The only path that ever resolves the original. Audit-logged, short-lived.
   async viewOriginal(adminId: string, shopId: string, id: string, ipAddress: string | null) {
-    const doc: any = await this.userDocument.findOne({ where: { id, shop_id: shopId } });
+    const doc: any = await this.userDocument.findOne({ _id: id, shop_id: shopId });
     if (!doc) throw new AppError('Document not found', 404);
 
     await this.accessLog.create({
@@ -173,23 +182,23 @@ export class DocumentsService {
       shop_id: shopId,
       viewed_by: adminId,
       ip_address: ipAddress,
-    } as any);
+    });
 
     const url = await this.s3.getViewUrl(doc.file_key, ORIGINAL_VIEW_EXPIRY_SECONDS);
     return new ApiPayload({ url, expiresIn: ORIGINAL_VIEW_EXPIRY_SECONDS }, 'Signed URL generated');
   }
 
   async review(adminId: string, shopId: string, id: string, status: 'verified' | 'rejected', reason?: string) {
-    const doc: any = await this.userDocument.findOne({ where: { id, shop_id: shopId } });
+    const doc: any = await this.userDocument.findOne({ _id: id, shop_id: shopId });
     if (!doc) throw new AppError('Document not found', 404);
     if (doc.status !== 'pending') throw new AppError('Document already reviewed', 400);
 
-    await doc.update({
+    await doc.set({
       status,
       reviewed_by: adminId,
       reviewed_at: new Date(),
       rejection_reason: status === 'rejected' ? (reason || null) : null,
-    });
+    }).save();
 
     const title = status === 'verified' ? 'ID document verified' : 'ID document rejected';
     const message = status === 'verified'

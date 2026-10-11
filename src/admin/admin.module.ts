@@ -1,9 +1,4 @@
 import { Module } from '@nestjs/common';
-import { SequelizeModule } from '@nestjs/sequelize';
-import {
-  User, Role, Subscription, SubscriptionPlan, Expense, ExpenseCategory,
-  Product, ProductSale, Payment, Shop, Attendance,
-} from '../models';
 import { UsersService } from './users/users.service';
 import { UsersController } from './users/users.controller';
 import { AdminFinancialService } from './financial/financial.service';
@@ -23,12 +18,6 @@ import { AdminNotificationsController } from './notifications/notifications.cont
 import { AdminAttendanceController } from './attendance/attendance.controller';
 
 @Module({
-  imports: [
-    SequelizeModule.forFeature([
-      User, Role, Subscription, SubscriptionPlan, Expense, ExpenseCategory,
-      Product, ProductSale, Payment, Shop, Attendance,
-    ]),
-  ],
   controllers: [
     UsersController,
     AdminFinancialController,

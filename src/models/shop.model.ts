@@ -1,45 +1,20 @@
-import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
+import { defineSchema, T } from './schema-helpers';
 
-@Table({ tableName: 'shops', underscored: true })
-export class Shop extends Model {
-  @PrimaryKey
-  @Default(DataType.UUIDV4)
-  @Column(DataType.UUID)
-  id: string;
+export const ShopSchema = defineSchema('shops', {
+  name: T.string({ required: true }),
+  owner_id: T.uuid({ required: true }),
+  phone: T.string(),
+  email: T.string(),
+  address: T.text(),
+  logo_url: T.text(),
+  cover_image_url: T.text(),
+  theme_color: T.string(),
+  is_active: T.bool({ required: true, default: false }),
+  is_closed: T.bool({ required: true, default: false }),
+  referral_code: T.string(),
+  referred_by_shop_id: T.uuid(),
+});
+ShopSchema.index({ owner_id: 1 });
+ShopSchema.index({ referral_code: 1 }, { unique: true, partialFilterExpression: { referral_code: { $type: 'string' } } });
 
-  @Column({ type: DataType.STRING(150), allowNull: false })
-  name: string;
-
-  @Column({ type: DataType.UUID, allowNull: false })
-  owner_id: string;
-
-  @Column(DataType.STRING(20))
-  phone: string;
-
-  @Column(DataType.STRING(255))
-  email: string;
-
-  @Column(DataType.TEXT)
-  address: string;
-
-  @Column(DataType.TEXT)
-  logo_url: string;
-
-  @Column(DataType.TEXT)
-  cover_image_url: string;
-
-  @Column(DataType.STRING(7))
-  theme_color: string;
-
-  @Column({ type: DataType.BOOLEAN, allowNull: false, defaultValue: false })
-  is_active: boolean;
-
-  @Column({ type: DataType.BOOLEAN, allowNull: false, defaultValue: false })
-  is_closed: boolean;
-
-  @Column(DataType.STRING(12))
-  referral_code: string;
-
-  @Column(DataType.UUID)
-  referred_by_shop_id: string;
-}
+export const Shop = { name: 'Shop', schema: ShopSchema };

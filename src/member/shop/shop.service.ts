@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { InjectModel, InjectConnection } from '@nestjs/sequelize';
-import { Sequelize } from 'sequelize-typescript';
+import { InjectModel, InjectConnection } from '@nestjs/mongoose';
+import { Connection, Model } from 'mongoose';
 import { Product, ProductSale, Payment, ExpenseCategory, Expense, User, PendingPayment } from '../../models';
 import { RazorpayService } from '../../shared/razorpay.service';
 import { LedgerService } from '../../shared/ledger.service';
 import { NotificationService } from '../../shared/notification.service';
 import { AppError } from '../../common/app-error';
 import { ApiPayload } from '../../common/api-payload';
+import { withTransaction, isUniqueViolation } from '../../database/db-utils';
 
 function normalizeItems(rawItems: any) {
   const items = Array.isArray(rawItems) ? rawItems : null;
@@ -21,14 +22,14 @@ function normalizeItems(rawItems: any) {
 @Injectable()
 export class MemberShopService {
   constructor(
-    @InjectModel(Product) private readonly product: typeof Product,
-    @InjectModel(ProductSale) private readonly productSale: typeof ProductSale,
-    @InjectModel(Payment) private readonly payment: typeof Payment,
-    @InjectModel(ExpenseCategory) private readonly expenseCategory: typeof ExpenseCategory,
-    @InjectModel(Expense) private readonly expense: typeof Expense,
-    @InjectModel(User) private readonly user: typeof User,
-    @InjectModel(PendingPayment) private readonly pendingPayment: typeof PendingPayment,
-    @InjectConnection() private readonly sequelize: Sequelize,
+    @InjectModel(Product.name) private readonly product: Model<any>,
+    @InjectModel(ProductSale.name) private readonly productSale: Model<any>,
+    @InjectModel(Payment.name) private readonly payment: Model<any>,
+    @InjectModel(ExpenseCategory.name) private readonly expenseCategory: Model<any>,
+    @InjectModel(Expense.name) private readonly expense: Model<any>,
+    @InjectModel(User.name) private readonly user: Model<any>,
+    @InjectModel(PendingPayment.name) private readonly pendingPayment: Model<any>,
+    @InjectConnection() private readonly connection: Connection,
     private readonly razorpay: RazorpayService,
     private readonly ledger: LedgerService,
     private readonly notificationService: NotificationService,
@@ -38,7 +39,7 @@ export class MemberShopService {
     const { category } = query;
     const where: any = { shop_id: shopId, is_active: true };
     if (category) where.category = category;
-    return this.product.findAll({ where, order: [['name', 'ASC']] });
+    return this.product.find(where).sort({ name: 1 });
   }
 
   async createOrder(shopId: string, userId: string, body: any) {
@@ -47,7 +48,7 @@ export class MemberShopService {
     let total = 0;
     const resolved: any[] = [];
     for (const { productId, qty } of items) {
-      const product: any = await this.product.findOne({ where: { id: productId, shop_id: shopId, is_active: true } });
+      const product: any = await this.product.findOne({ _id: productId, shop_id: shopId, is_active: true });
       if (!product) throw new AppError(`Product ${productId} not found`, 404);
       if (product.stock_qty < qty) throw new AppError(`Only ${product.stock_qty} left of ${product.name}`, 400);
       total += parseFloat(product.sell_price) * qty;
@@ -69,7 +70,7 @@ export class MemberShopService {
       razorpay_order_id: order.id,
       amount: total,
       payload: { items: items.map(({ productId, qty }) => ({ productId, qty })) },
-    } as any);
+    });
 
     return {
       orderId: order.id,
@@ -89,10 +90,9 @@ export class MemberShopService {
   // result instead of reprocessing (double-decrementing stock, double
   // crediting the ledger, etc.).
   private async existingPurchaseResult(shopId: string, razorpayOrderId: string) {
-    const sales: any[] = await this.productSale.findAll({
-      where: { shop_id: shopId, order_id: razorpayOrderId },
-      include: [{ model: Product, as: 'product', attributes: ['name'] }],
-    });
+    const sales: any[] = await this.productSale
+      .find({ shop_id: shopId, order_id: razorpayOrderId })
+      .populate({ path: 'product', select: 'name -_id' });
     if (!sales.length) return null;
     const total = sales.reduce((sum, s) => sum + parseFloat(s.total_price), 0);
     return new ApiPayload({
@@ -126,12 +126,10 @@ export class MemberShopService {
     // The cart to fulfill comes from what createOrder() resolved and stored
     // server-side for this exact order — not from the client body.
     const pending: any = await this.pendingPayment.findOne({
-      where: {
-        razorpay_order_id: razorpayOrderId,
-        shop_id: shopId,
-        user_id: userId,
-        kind: 'shop_order',
-      },
+      razorpay_order_id: razorpayOrderId,
+      shop_id: shopId,
+      user_id: userId,
+      kind: 'shop_order',
     });
     if (!pending) throw new AppError('No matching order found for this payment', 400);
     if (pending.consumed_at) throw new AppError('This payment has already been processed', 409);
@@ -140,84 +138,87 @@ export class MemberShopService {
     // it — no need to re-validate client-shaped input here.
     const items: { productId: string; qty: number }[] = pending.payload.items;
 
-    const t: any = await this.sequelize.transaction();
     try {
-      const saleDate = new Date().toISOString().split('T')[0];
-      const lines: any[] = [];
-      let total = 0;
+      // Concurrent purchases of the same product both write its stock_qty,
+      // so MongoDB serializes them (the loser's transaction retries against
+      // the updated stock) — what SELECT ... FOR UPDATE did in Postgres.
+      const { lines, total, anchorSaleId, itemsDesc } = await withTransaction(this.connection, async (session) => {
+        const saleDate = new Date().toISOString().split('T')[0];
+        const lines: any[] = [];
+        let total = 0;
 
-      for (const { productId, qty } of items) {
-        const product: any = await this.product.findOne({
-          where: { id: productId, shop_id: shopId, is_active: true },
-          transaction: t, lock: t.LOCK.UPDATE,
-        });
-        if (!product) throw new AppError(`Product ${productId} not found`, 404);
-        if (product.stock_qty < qty) throw new AppError(`Only ${product.stock_qty} left of ${product.name}`, 400);
+        for (const { productId, qty } of items) {
+          const product: any = await this.product
+            .findOne({ _id: productId, shop_id: shopId, is_active: true })
+            .session(session);
+          if (!product) throw new AppError(`Product ${productId} not found`, 404);
+          if (product.stock_qty < qty) throw new AppError(`Only ${product.stock_qty} left of ${product.name}`, 400);
 
-        const total_price = parseFloat(product.sell_price) * qty;
-        total += total_price;
+          const total_price = parseFloat(product.sell_price) * qty;
+          total += total_price;
 
-        const sale: any = await this.productSale.create({
+          const sale: any = await new this.productSale({
+            shop_id: shopId,
+            product_id: product.id,
+            member_id: userId,
+            quantity: qty,
+            unit_price: product.sell_price,
+            total_price,
+            order_mode: 'online',
+            payment_mode: 'razorpay',
+            transaction_id: razorpayPaymentId,
+            order_id: razorpayOrderId,
+            sold_by: userId,
+            sale_date: saleDate,
+            status: 'pending',
+          }).save({ session });
+
+          await product.set({ stock_qty: product.stock_qty - qty }).save({ session });
+          lines.push({ sale, product, qty });
+        }
+
+        const anchorSaleId = lines[0].sale.id;
+        const itemsDesc = lines.map(({ product, qty }) => `${product.name} × ${qty}`).join(', ');
+
+        await new this.payment({
           shop_id: shopId,
-          product_id: product.id,
           member_id: userId,
-          quantity: qty,
-          unit_price: product.sell_price,
-          total_price,
-          order_mode: 'online',
-          payment_mode: 'razorpay',
-          transaction_id: razorpayPaymentId,
-          order_id: razorpayOrderId,
-          sold_by: userId,
-          sale_date: saleDate,
-          status: 'pending',
-        } as any, { transaction: t });
+          product_sale_id: anchorSaleId,
+          amount: total,
+          payment_date: saleDate,
+          payment_method: 'razorpay',
+        }).save({ session });
 
-        await product.update({ stock_qty: product.stock_qty - qty }, { transaction: t });
-        lines.push({ sale, product, qty });
-      }
+        await this.ledger.record({
+          shopId,
+          type: 'credit',
+          amount: total,
+          reference: 'sale',
+          referenceId: anchorSaleId,
+          entryDate: saleDate,
+          session,
+        });
 
-      const anchorSaleId = lines[0].sale.id;
-      const itemsDesc = lines.map(({ product, qty }) => `${product.name} × ${qty}`).join(', ');
+        const productSellCategory: any = await this.expenseCategory.findOneAndUpdate(
+          { shop_id: shopId, name: 'Product Sell', type: 'credit' },
+          { $setOnInsert: { shop_id: shopId, name: 'Product Sell', type: 'credit' } },
+          { upsert: true, new: true, session },
+        );
+        const buyer: any = await this.user.findById(userId).select('first_name last_name').session(session);
+        await new this.expense({
+          shop_id: shopId,
+          category_id: productSellCategory.id,
+          description: itemsDesc,
+          amount: total,
+          expense_date: saleDate,
+          paid_to: buyer ? `${buyer.first_name} ${buyer.last_name}`.trim() : null,
+          product_sale_id: anchorSaleId,
+        }).save({ session });
 
-      await this.payment.create({
-        shop_id: shopId,
-        member_id: userId,
-        product_sale_id: anchorSaleId,
-        amount: total,
-        payment_date: saleDate,
-        payment_method: 'razorpay',
-      } as any, { transaction: t });
+        await pending.set({ consumed_at: new Date() }).save({ session });
 
-      await this.ledger.record({
-        shopId,
-        type: 'credit',
-        amount: total,
-        reference: 'sale',
-        referenceId: anchorSaleId,
-        entryDate: saleDate,
-        transaction: t,
+        return { lines, total, anchorSaleId, itemsDesc };
       });
-
-      const [productSellCategory]: any = await this.expenseCategory.findOrCreate({
-        where: { shop_id: shopId, name: 'Product Sell', type: 'credit' },
-        defaults: { shop_id: shopId, name: 'Product Sell', type: 'credit' } as any,
-        transaction: t,
-      });
-      const buyer: any = await this.user.findByPk(userId, { attributes: ['first_name', 'last_name'], transaction: t });
-      await this.expense.create({
-        shop_id: shopId,
-        category_id: productSellCategory.id,
-        description: itemsDesc,
-        amount: total,
-        expense_date: saleDate,
-        paid_to: buyer ? `${buyer.first_name} ${buyer.last_name}`.trim() : null,
-        product_sale_id: anchorSaleId,
-      } as any, { transaction: t });
-
-      await pending.update({ consumed_at: new Date() }, { transaction: t });
-
-      await t.commit();
 
       try {
         await this.notificationService.createNotification({
@@ -243,10 +244,9 @@ export class MemberShopService {
         })),
       }, 'Purchase successful');
     } catch (err: any) {
-      if (!t.finished) await t.rollback();
       // Lost a race to a concurrent request processing the same order —
-      // the unique constraint on (order_id, product_id) caught it.
-      if (err.name === 'SequelizeUniqueConstraintError') {
+      // the unique index on (order_id, product_id) caught it.
+      if (isUniqueViolation(err)) {
         const existing = await this.existingPurchaseResult(shopId, razorpayOrderId);
         if (existing) return existing;
       }
@@ -255,11 +255,10 @@ export class MemberShopService {
   }
 
   async myOrders(shopId: string, userId: string) {
-    const sales: any[] = await this.productSale.findAll({
-      where: { shop_id: shopId, member_id: userId },
-      include: [{ model: Product, as: 'product', attributes: ['id', 'name', 'photo_url', 'category'] }],
-      order: [['created_at', 'DESC']],
-    });
+    const sales: any[] = await this.productSale
+      .find({ shop_id: shopId, member_id: userId })
+      .populate({ path: 'product', select: 'name photo_url category' })
+      .sort({ createdAt: -1 });
 
     const groups = new Map<string, any>();
     for (const sale of sales) {

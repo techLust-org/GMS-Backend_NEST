@@ -1,24 +1,14 @@
-import { Table, Column, Model, DataType, PrimaryKey, Default } from 'sequelize-typescript';
+import { defineSchema, T } from './schema-helpers';
 
-@Table({ tableName: 'trainer_members', underscored: true })
-export class TrainerMember extends Model {
-  @PrimaryKey
-  @Default(DataType.UUIDV4)
-  @Column(DataType.UUID)
-  id: string;
+export const TrainerMemberSchema = defineSchema('trainer_members', {
+  shop_id: T.uuid({ required: true }),
+  trainer_id: T.uuid({ required: true }),
+  member_id: T.uuid({ required: true }),
+  is_active: T.bool({ default: true }),
+  assigned_at: T.date({ default: () => new Date() }),
+});
+TrainerMemberSchema.index({ trainer_id: 1, is_active: 1 });
+TrainerMemberSchema.index({ member_id: 1, is_active: 1 });
+TrainerMemberSchema.index({ shop_id: 1 });
 
-  @Column({ type: DataType.UUID, allowNull: false })
-  shop_id: string;
-
-  @Column({ type: DataType.UUID, allowNull: false })
-  trainer_id: string;
-
-  @Column({ type: DataType.UUID, allowNull: false })
-  member_id: string;
-
-  @Column({ type: DataType.BOOLEAN, defaultValue: true })
-  is_active: boolean;
-
-  @Column({ type: DataType.DATE, defaultValue: DataType.NOW })
-  assigned_at: Date;
-}
+export const TrainerMember = { name: 'TrainerMember', schema: TrainerMemberSchema };
